@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "checkJs": false
+  },
+  "exclude": [
+    "node_modules",
+    ".next"
+  ]
+}
