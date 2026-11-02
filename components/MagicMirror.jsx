@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Download, RefreshCcw, Sparkles, WandSparkles, Volume2, VolumeX } from 'lucide-react';
+import { createHandMagic } from '../lib/trueHandMagic';
 
 const WASM='/mediapipe/wasm';
 // Wings use shoulder and wrist landmarks. The translucent wings sit at the sides of
@@ -116,11 +117,12 @@ const MODEL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pos
 
 export default function MagicMirror(){
  const videoRef=useRef(null),canvasRef=useRef(null), landmarkerRef=useRef(null),streamRef=useRef(null),rafRef=useRef(0);
+ const handMagicRef=useRef(null),handMagicLastRef=useRef(null),handMagicFrameRef=useRef(0),handBurstRef=useRef(0);
  const wingsRef=useRef({x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0}),wingHoldRef=useRef(null),lastWingTriggerRef=useRef(0),wingShownRef=useRef(false);
  const progressRef=useRef(0),sparksRef=useRef([]),lastSeenRef=useRef(-1),handRef=useRef(null),holdStartRef=useRef(null),lastFrameRef=useRef(0),lastTriggerRef=useRef(0),activeRef=useRef(false),effectTimeRef=useRef(0),phaseRef=useRef('welcome');
- const [phase,setPhase]=useState('welcome'),[status,setStatus]=useState('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม'),[progress,setProgress]=useState(0),[spellCount,setSpellCount]=useState(0),[wingCount,setWingCount]=useState(0),[wingProgress,setWingProgress]=useState(0),[snapshot,setSnapshot]=useState(null),[muted,setMuted]=useState(true),[error,setError]=useState(null);
+ const [phase,setPhase]=useState('welcome'),[status,setStatus]=useState('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม'),[progress,setProgress]=useState(0),[spellCount,setSpellCount]=useState(0),[wingCount,setWingCount]=useState(0),[wingProgress,setWingProgress]=useState(0),[snapshot,setSnapshot]=useState(null),[muted,setMuted]=useState(true),[error,setError]=useState(null),[handStatus,setHandStatus]=useState('เริ่มระบบเวทมือ'),[handMode,setHandMode]=useState(false),[chargePercent,setChargePercent]=useState(0);
  useEffect(()=>{phaseRef.current=phase},[phase]);
- const stop=useCallback(()=>{cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
+ const stop=useCallback(()=>{cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;handMagicRef.current?.close();handMagicRef.current=null;handMagicLastRef.current=null;handMagicFrameRef.current=0;handBurstRef.current=0;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
  useEffect(()=>()=>{stop()},[stop]);
  const playChime=useCallback(()=>{if(muted)return;try{const ctx=new AudioContext();const t=ctx.currentTime;[523.25,659.25,783.99].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t+i*.1);g.gain.exponentialRampToValueAtTime(.065,t+i*.1+.02);g.gain.exponentialRampToValueAtTime(.0001,t+i*.1+.5);o.connect(g).connect(ctx.destination);o.start(t+i*.1);o.stop(t+i*.1+.52)});setTimeout(()=>ctx.close(),1100)}catch{}},[muted]);
  const draw=useCallback((timestamp)=>{
@@ -177,7 +179,7 @@ export default function MagicMirror(){
         }
         const rightUp=isVisible(shoulder)&&isVisible(wrist)&&wrist.y<shoulder.y-.10;
         const leftUp=isVisible(leftShoulder)&&isVisible(leftWrist)&&leftWrist.y<leftShoulder.y-.10;
-        const which=rightUp?palmAnchor(lm,'right'):leftUp?palmAnchor(lm,'left'):null;
+        const which=!handMagicRef.current ? (rightUp?palmAnchor(lm,'right'):leftUp?palmAnchor(lm,'left'):null) : null;
         if(which){
           // camera crop + mirror transform: pixels in frame after mirroring
           const px=w-(ox+which.x*dw),py=oy+which.y*dh;
@@ -189,9 +191,38 @@ export default function MagicMirror(){
           progressRef.current=Math.min(100,Math.floor(held/700*100));setProgress(progressRef.current);
           if(held>=700 && timestamp-lastTriggerRef.current>1600 && !activeRef.current){activeRef.current=true;effectTimeRef.current=timestamp;lastTriggerRef.current=timestamp;setSpellCount(v=>v+1);setStatus('สำเร็จ! เวทมนตร์ตื่นขึ้นแล้ว ✨');playChime();}
           else if(!activeRef.current)setStatus('ยกมือค้างไว้เพื่อปลุกพลังเวทมนตร์');
-         }else{handRef.current=null;holdStartRef.current=null;progressRef.current=0;setProgress(0);setStatus('ยกมือข้างใดข้างหนึ่งให้สูงกว่าไหล่');}
-       }else{handRef.current=null;holdStartRef.current=null;wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current.target=0;setWingProgress(0);setProgress(0);setStatus('ขยับเข้ากล้องให้เห็นหัวและแขน');}
+         }else if(!handMagicRef.current){handRef.current=null;holdStartRef.current=null;progressRef.current=0;setProgress(0);setStatus('ยกมือข้างใดข้างหนึ่งให้สูงกว่าไหล่');}
+       }else{if(!handMagicRef.current){handRef.current=null;holdStartRef.current=null;setProgress(0);}wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current.target=0;setWingProgress(0);}
       }catch(e){console.warn('Pose detection frame skipped',e)}
+    }
+    // V08 hand inference at ~15 Hz; rendering stays at display refresh rate.
+    if(handMagicRef.current && timestamp-handMagicFrameRef.current>=66){
+      handMagicFrameRef.current=timestamp;
+      try {
+        const info=handMagicRef.current.detect(video,timestamp,{displayWidth:w,displayHeight:h,mirror:true});
+        if(info){
+          handMagicLastRef.current=info;
+          const labels={SEARCHING:'ยื่นมือเข้ากล้อง',ORB:'แบมือ: ลูกแก้วพร้อม',CHARGING:'กำมือ: กำลังสะสมพลัง'};
+          setHandStatus(labels[info.state]||info.state);
+          setChargePercent(Math.round(info.charge*100));
+          if(info.canvasPalm){
+            const previous=handRef.current;
+            handRef.current=previous?{x:previous.x+(info.canvasPalm.x-previous.x)*.34,y:previous.y+(info.canvasPalm.y-previous.y)*.34}:info.canvasPalm;
+          }else{handRef.current=null;}
+          for(const event of info.events){
+            if(event==='ORB_APPEAR'){setSpellCount(n=>n+1);playChime();}
+            if(event==='BURST'){
+              handBurstRef.current=timestamp;effectTimeRef.current=timestamp;activeRef.current=true;
+              playChime();
+              const pos=handRef.current;
+              if(pos)for(let i=0;i<130;i++){
+                const a=Math.random()*Math.PI*2,speed=2+Math.random()*8;
+                sparksRef.current.push({x:pos.x,y:pos.y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,life:52+Math.random()*28,max:80,r:1.5+Math.random()*4,hue:i%4===0?273:44});
+              }
+            }
+          }
+        }
+      }catch(e){console.warn('Hand detection frame skipped',e);}
     }
     const wings=wingsRef.current;
     wings.opacity+=(wings.target-wings.opacity)*.10;
@@ -200,11 +231,20 @@ export default function MagicMirror(){
     if(hand){
      const power=activeRef.current?1:.55,age=timestamp-effectTimeRef.current;
      if(activeRef.current && age>3000)activeRef.current=false;
-     if(activeRef.current || holdStartRef.current!==null){
-      const count=activeRef.current?10:3;
+     if(activeRef.current || holdStartRef.current!==null || handMagicLastRef.current?.state==='CHARGING'){
+      const count=activeRef.current?10:handMagicLastRef.current?.state==='CHARGING'?7:3;
       for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,vel=(.35+Math.random()*2.2)*(activeRef.current?1.6:1);sparksRef.current.push({x:hand.x+(Math.random()-.5)*16,y:hand.y+(Math.random()-.5)*16,vx:Math.cos(a)*vel,vy:Math.sin(a)*vel-.5,life:35+Math.random()*35,max:70,r:1.2+Math.random()*3,hue:Math.random()>.25?44:273})}
      }
-     drawArcaneOrb(ctx,hand.x,hand.y,timestamp,activeRef.current?effectTimeRef.current:0,progressRef.current);
+     const handInfo=handMagicRef.current?handMagicLastRef.current:null;
+      const charging=handInfo?.state==='CHARGING';
+      const charge=charging?Math.round((handInfo?.charge||0)*100):progressRef.current;
+      drawArcaneOrb(ctx,hand.x,hand.y,timestamp,activeRef.current?effectTimeRef.current:0,charge);
+      if(charging){
+        // Additional charge rings and lightning accelerate as the fist is held.
+        const intensity=.35+(handInfo.charge||0)*.65;
+        ctx.save();ctx.globalCompositeOperation='screen';ctx.strokeStyle=`rgba(235,163,255,${intensity})`;
+        ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(hand.x,hand.y,68+Math.sin(timestamp/80)*4,0,Math.PI*2);ctx.stroke();ctx.restore();
+      }
     }
     ctx.save();ctx.globalCompositeOperation='screen';sparksRef.current=sparksRef.current.filter(s=>s.life>0).slice(-500);for(const s of sparksRef.current){s.x+=s.vx;s.y+=s.vy;s.vy-=.018;s.life-=1;const alpha=Math.max(0,s.life/s.max);ctx.fillStyle=s.hue===44?`rgba(255,215,126,${alpha})`:`rgba(201,154,255,${alpha})`;ctx.beginPath();ctx.arc(s.x,s.y,s.r*alpha,0,Math.PI*2);ctx.fill();}ctx.restore();
     // gentle frame decoration
@@ -212,7 +252,7 @@ export default function MagicMirror(){
    }
   rafRef.current=requestAnimationFrame(draw);
  },[playChime]);
- const start=async()=>{let stage='เริ่มต้น';stop();setError(null);setStatus('กำลังเปิดประตูเวทมนตร์...');setPhase('loading');setProgress(0);setSpellCount(0);setWingCount(0);setWingProgress(0);setSnapshot(null);try{
+ const start=async()=>{let stage='เริ่มต้น';stop();setError(null);setStatus('กำลังเปิดประตูเวทมนตร์...');setPhase('loading');setProgress(0);setSpellCount(0);setWingCount(0);setWingProgress(0);setSnapshot(null);setHandMode(false);setHandStatus('กำลังเปิดระบบติดตามมือ...');setChargePercent(0);try{
    if(!navigator.mediaDevices?.getUserMedia)throw new Error('เบราว์เซอร์นี้ไม่รองรับกล้อง หรือไม่ได้ใช้ HTTPS/localhost');
    stage='ขอสิทธิ์กล้อง';setStatus('กำลังขอสิทธิ์กล้อง...');
    const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'}});streamRef.current=stream;
@@ -228,7 +268,10 @@ export default function MagicMirror(){
      model = await PoseLandmarker.createFromOptions(fileset,{baseOptions:{modelAssetPath:MODEL,delegate:'CPU'},runningMode:'VIDEO',numPoses:1,minPoseDetectionConfidence:.6,minTrackingConfidence:.6});
    }
    landmarkerRef.current=model;
-   phaseRef.current='play';setPhase('play');setStatus('ยกมือข้างใดข้างหนึ่งให้สูงกว่าไหล่');rafRef.current=requestAnimationFrame(draw);
+   stage='โหลด Hand Landmarker';setStatus('กำลังโหลด Hand Landmarker...');
+   try{handMagicRef.current=await createHandMagic({wasmPath:WASM});setHandMode(true);setHandStatus('แบมือเพื่อเรียกลูกแก้ว');}
+   catch(handError){console.warn('Hand tracking unavailable; Pose fallback enabled',handError);handMagicRef.current=null;setHandMode(false);setHandStatus('Hand Tracking ไม่พร้อม: ใช้โหมดเดิม');}
+   phaseRef.current='play';setPhase('play');setStatus(handMagicRef.current?'แบมือ → กำมือ → แบมือ เพื่อปล่อยพลัง':'ยกมือข้างใดข้างหนึ่งให้สูงกว่าไหล่');rafRef.current=requestAnimationFrame(draw);
   }catch(err){console.error('Magic Mirror startup failed at:',stage,err);stop();const reason=err instanceof Error?`${err.name}: ${err.message}`:String(err);let tip='';if(err?.name==='NotAllowedError'||err?.name==='PermissionDeniedError')tip=' — กรุณาอนุญาตกล้องใน Site Settings';else if(err?.name==='NotFoundError')tip=' — ไม่พบกล้องที่เชื่อมต่อ';else if(err?.name==='NotReadableError')tip=' — กล้องอาจถูกโปรแกรมอื่นใช้งานอยู่';else if(stage.includes('WASM')||stage.includes('Pose'))tip=' — ตรวจสอบไฟล์ /mediapipe/wasm และการเชื่อมต่อ Google Storage';setError(`ขั้นตอน: ${stage} | ${reason}${tip}`);setPhase('welcome')}
  };
  const makePhotoFile=(dataUrl)=>{
@@ -282,14 +325,14 @@ export default function MagicMirror(){
   <span className="eyebrow"><Sparkles size={16}/> AN INTERACTIVE FANTASY EXPERIENCE</span><h1>THE<br/><em>ENCHANTED</em><br/>MIRROR<span className="star-dot">✧</span></h1>
   <div className="gold-rule"/><p className="lead">ก้าวเข้าสู่โลกเวทมนตร์ที่มีชีวิต<br/>เพียงยกมือ… แล้วปล่อยให้แสงมหัศจรรย์ติดตามคุณ</p>
   <div className="instructions"><div><span>01</span><p>อนุญาตการใช้งานกล้อง</p></div><div><span>02</span><p>ยืนให้เห็นช่วงบนและยกมือเหนือไหล่</p></div><div><span>03</span><p>กางแขนค้าง 1 วินาทีเพื่อเรียกปีกเวทมนตร์</p></div></div>
-  <div className="notice"><WandSparkles size={17}/><span>Prototype 07 · Celestial Inferno + Arcane Prism Wings<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
+  <div className="notice"><WandSparkles size={17}/><span>Prototype 08 · True Hand Magic + Arcane Prism Wings<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
  </section>
  <section className="mirror-wrap"><div className="mirror-ornament">✦ <span>THE MAGIC IS WITHIN YOU</span> ✦</div><div className="mirror-frame"><div className="mirror-inner">
   <video ref={videoRef} playsInline autoPlay muted className="hidden-video"/><canvas ref={canvasRef} width={720} height={1280} className="mirror-canvas" style={{display:phase==='play'?'block':'none'}}/>
   {phase==='welcome'&&<div className="idle-scene"><div className="portal-ring"><div className="portal-core"><span>✧</span></div></div><div className="scene-copy"><span className="mini-label">ENCHANTED FOREST</span><h2>AWAKEN<br/>YOUR MAGIC</h2><p>กระจกกำลังรอพลังวิเศษของคุณ</p></div></div>}
   {phase==='loading'&&<div className="loading-scene"><div className="loader-sun">✺</div><h2>OPENING THE PORTAL</h2><p>กำลังเตรียมกล้องและโมเดล AI...</p></div>}
   {phase==='capture'&&snapshot&&<img src={snapshot} alt="ภาพเวทมนตร์ที่ถ่ายจากกระจก" className="capture-image"/>}
-  {phase==='play'&&<div className="play-overlay"><div className="spell-heading"><span className="mini-label">SPELLS 01 + 02</span><h2>AWAKEN · WINGS</h2></div><div className="spell-instruction"><div className="spell-status">{status}</div><div className="progress-track"><div style={{width:`${progress}%`}}/></div><small>✨ ลูกแก้ว {spellCount} ครั้ง · 🦋 ปีก {wingCount} ครั้ง</small><div className="wing-progress"><span>WINGS OF LIGHT</span><div className="progress-track"><div style={{width:`${wingProgress}%`}}/></div></div></div></div>}
+  {phase==='play'&&<div className="play-overlay"><div className="spell-heading"><span className="mini-label">SPELLS 01 + 02 + 03</span><h2>TRUE HAND MAGIC</h2></div><div className="spell-instruction"><div className="spell-status">{status}</div><div className="progress-track"><div style={{width:`${progress}%`}}/></div><small>✨ ลูกแก้ว {spellCount} ครั้ง · 🦋 ปีก {wingCount} ครั้ง</small>{handMode&&<div style={{fontSize:12,marginTop:6,color:'#f3d6a4'}}>✋ {handStatus} · พลัง {chargePercent}%</div>}<div className="wing-progress"><span>WINGS OF LIGHT</span><div className="progress-track"><div style={{width:`${wingProgress}%`}}/></div></div></div></div>}
   {phase==='capture'&&<div className="capture-label"><Sparkles size={16}/> YOUR MAGICAL MOMENT</div>}
  </div></div><div className="mirror-footer"><span>✦ ENCHANTED REALM ✦</span><div className="mirror-actions">
   {phase==='welcome'&&<button className="primary-action" onClick={start}><Camera size={18}/> เข้าสู่โลกเวทมนตร์</button>}
@@ -297,5 +340,5 @@ export default function MagicMirror(){
   {phase==='play'&&<><button className="icon-action" onClick={()=>setMuted(v=>!v)} title={muted?'เปิดเสียง':'ปิดเสียง'}>{muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><button className="primary-action" onClick={capture}><Camera size={18}/> ถ่ายภาพเวทมนตร์</button><button className="icon-action" onClick={reset} title="เริ่มใหม่"><RefreshCcw size={18}/></button></>}
   {phase==='capture'&&<><button className="primary-action" onClick={sharePhoto}><Download size={18}/> แชร์ / บันทึกบนมือถือ</button><button className="secondary-action" onClick={savePhoto}>ดาวน์โหลด PNG</button><button className="secondary-action" onClick={openPhoto}>วิธีบันทึกรูป</button><button className="secondary-action" onClick={start}><RefreshCcw size={16}/> เล่นอีกครั้ง</button></>}
  </div>{error&&<p className="error-text"><CameraOff size={16}/>{error}<br/>ตรวจสอบสิทธิ์กล้อง อินเทอร์เน็ต แล้วลองใหม่</p>}</div></section>
- <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 07</footer></main>
+ <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08</footer></main>
 }

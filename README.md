@@ -1,41 +1,29 @@
-# AI Magic Mirror V07 — Celestial Inferno
+# Magic Mirror V08 — True Hand Magic
 
-Based on the working JavaScript V06. The V04 curved gold mirror, Arcane Prism wings and port **3107** are unchanged.
+Integration against the user-provided latest `MagicMirror.jsx`.
 
-## New spell visual
-- Palm-anchored (Pose-based estimate, *not* full Hand Landmarker)
-- Multi-layer gold/violet/cyan bloom, white-hot orb, three animated rune orbits, plasma ribbons, expanding burst on trigger
-- Existing raise-hand gesture and wing gesture remain unchanged
-- All visual effects rendered with Canvas 2D; no additional package required
+## Replace exactly two files in your existing Next.js project
 
-## Run
+- `components/MagicMirror.jsx` — replace your existing file
+- `lib/trueHandMagic.js` — new file; create `lib` if missing
+
+Do NOT replace CSS, package.json, or WASM assets. Your current V07.2 system, mobile share, curved mirror UI, and port 3107 remain intact. The current project must already use `@mediapipe/tasks-vision` (existing V07 dependency).
+
+## Gestures
+- Open palm steadily for ~300ms: summon orb
+- Hold a fist for 300ms: begin charging
+- After at least 1100ms charging, open palm again: burst
+- Stretch both arms sideways: the existing wings gesture still works
+
+If the Hand Landmarker fails to load, pose-based Awaken works as a fallback. The Hand model is fetched from Google Storage. Hand and Pose both use your local `/mediapipe/wasm` files. Hand inference is throttled to about 15fps.
+
+## Commands
+
 ```bash
-npm install
+npm run build
 npm run dev
 ```
-Open http://localhost:3107. Run `npm run build` before pushing to GitHub. Never close other projects' node processes to free the port; stop only the previous Magic Mirror terminal using 3107.
 
-## Testing
-1. Face camera, keep hand visible above shoulder for 0.7s.
-2. Orb should hover near palm and follow smoothly. Check both left and right hands.
-3. Open arms for Wings of Light; wings should still trigger.
-4. Capture photo; effect should appear in PNG.
-5. Test FPS on mobile via Vercel HTTPS; reduce particle count if FPS drops.
+Local port remains 3107 from your existing package.json. For Vercel, commit and push both files to your linked GitHub repository after local verification.
 
-**Known limitation:** The 33-point Pose model approximates a palm anchor. Precise palm rotation and open-palm detection require a separate Hand Landmarker in a future version. Build/runtime camera testing still required.
-
-
-## V07.1 Photo Save Patch
-- Photo result downloads as a local PNG through a Blob object URL.
-- Added 'เปิดรูปเพื่อบันทึก' fallback for mobile browsers that open rather than download.
-- Preserves UI, video processing, gestures, effects, and port 3107.
-- Chrome/Android: check Downloads. On iOS Safari: use the share sheet or long-press to save the opened image.
-
-
-## V07.2 Mobile Save
-- เมื่อถ่ายภาพ จะสร้าง PNG File ไว้ทันที
-- ปุ่ม แชร์ / บันทึกบนมือถือ ใช้ Web Share API ใน user tap โดยตรง (iOS/Android ที่รองรับ)
-- ปุ่ม ดาวน์โหลด PNG ยังใช้ Blob download สำหรับ Desktop
-- หากอุปกรณ์ไม่รองรับ ให้แตะภาพตัวอย่างค้างเพื่อเลือก Save Image/Download Image
-- ไม่อัปโหลดภาพขึ้น Server ภาพถูกประมวลผลใน Browser เท่านั้น
-- ไม่เปลี่ยน UI กระจก, Gesture, Effect, WASM หรือพอร์ต 3107
+**Known constraints**: single hand, approximation based on 2D finger landmarks, occlusion and mobile performance; must be tested on real camera.
