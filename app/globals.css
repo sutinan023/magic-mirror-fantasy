@@ -51,3 +51,82 @@
  .lead{font-size:13px;}
  .notice{margin-top:15px;}
 }
+
+/* Portrait Kiosk v03: stage fills the viewport instead of staying at its old fixed aspect-ratio height.
+   Desktop rules, camera logic and gesture calculations are intentionally untouched. */
+@media (orientation: portrait) {
+  html, body { width: 100%; min-height: 100%; }
+  .app-shell {
+    height: 100dvh; min-height: 0; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 0; padding: 0;
+  }
+  .info-panel { display: none; }
+  .mirror-wrap {
+    display: flex; flex-direction: column;
+    width: min(100%, 720px); max-width: none;
+    height: 100%; min-height: 0;
+    padding: 14px 14px 12px; margin: 0 auto;
+  }
+  .mirror-ornament { flex: 0 0 auto; margin: 0 0 12px; font-size: clamp(12px, 1.4dvh, 18px); }
+  .mirror-frame {
+    display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+    border-width: clamp(5px, 1vw, 9px);
+  }
+  .mirror-inner {
+    flex: 1 1 auto; min-height: 0; width: 100%; height: 100%;
+    aspect-ratio: auto;
+  }
+  .mirror-footer { flex: 0 0 auto; margin-top: 12px; }
+  .mirror-footer > span { font-size: clamp(14px, 1.8dvh, 20px); }
+  .mirror-actions { margin-top: 10px; }
+  .primary-action, .secondary-action, .icon-action {
+    min-height: 48px; padding: 12px 18px; font-size: clamp(13px, 1.6dvh, 17px);
+  }
+  .play-overlay { padding: clamp(36px, 6dvh, 72px) 16px 24px; }
+  .spell-heading h2 { font-size: clamp(38px, 5dvh, 66px); }
+  .spell-status { font-size: clamp(13px, 1.65dvh, 19px); }
+  .spell-instruction { padding: 15px 12px; }
+  .global-footer { display: none; }
+}
+@media (orientation: portrait) and (max-height: 650px) {
+  .mirror-wrap { padding: 8px 10px; }
+  .mirror-ornament { margin-bottom: 5px; }
+  .mirror-footer { margin-top: 7px; }
+  .mirror-actions { margin-top: 6px; }
+  .primary-action, .secondary-action, .icon-action { min-height: 40px; padding: 8px 12px; }
+}
+
+/* V04 Refined Portrait: preserve the original V03 arched mirror and gold trim.
+   Only the portrait layout changes; no vision, camera, or gesture logic changes. */
+@media (orientation: portrait) and (min-height: 651px) {
+  .app-shell {
+    justify-content: center;
+    padding: max(12px, 2dvh) 0;
+  }
+  .mirror-wrap {
+    width: min(100%, 650px);
+    height: min(94dvh, 1180px);
+    padding: clamp(12px, 2.5vw, 24px) clamp(18px, 4.5vw, 32px) 14px;
+    justify-content: center;
+  }
+  .mirror-ornament {
+    margin-bottom: clamp(12px, 1.8dvh, 24px);
+    font-size: clamp(12px, 1.55dvh, 17px);
+  }
+  .mirror-frame {
+    flex: 1 1 auto;
+    border-width: clamp(6px, 1vw, 9px);
+    /* Original rounded arch and multi-line gold trim intentionally inherited. */
+  }
+  .mirror-footer { margin-top: clamp(12px, 1.8dvh, 22px); }
+  .mirror-actions { gap: clamp(9px, 1.4vw, 16px); margin-top: 12px; }
+  .primary-action,.secondary-action,.icon-action { min-height: 48px; }
+  .play-overlay { padding: clamp(40px, 6dvh, 70px) 15px clamp(20px, 3dvh, 36px); }
+  .spell-instruction { padding: clamp(13px, 1.7dvh, 20px) 12px; }
+  .spell-status { font-size: clamp(13px, 1.55dvh, 18px); }
+}
+
+/* V05: compact second gesture indicator; original V04 frame and layout untouched */
+.wing-progress{display:flex;align-items:center;gap:9px;margin:9px auto 0;max-width:95%;color:#e8cfa3;font-size:10px;letter-spacing:.06em}.wing-progress .progress-track{flex:1;margin:0;height:4px}.spell-heading h2{font-size:clamp(25px,3vw,40px)}
+@media(orientation:portrait){.wing-progress{font-size:clamp(9px,1.1dvh,13px)}.spell-heading h2{font-size:clamp(27px,3.4dvh,46px)}}

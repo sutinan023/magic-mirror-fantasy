@@ -24,4 +24,27 @@
 - Desktop landscape: centered portrait mirror, maximum width 440px and height-derived scaling, with compact instruction panel.
 - Portrait: immersive single-mirror layout, instruction panel hidden.
 - CSS-only update based on the previously working WASM-fixed version. Gesture engine, MediaPipe paths, and port 3107 are unchanged.
-# magic-mirror-fantasy
+
+
+## Portrait Kiosk v03
+- Portrait viewport (e.g. 540x960 or 1080x1920) now fills the full height with the mirror, avoiding an empty bottom half.
+- The camera, MediaPipe initialization, gesture code, and dev port 3107 are unchanged.
+- Test Chrome Device Toolbar > Responsive > 540 x 960; reload and verify camera overlay/capture.
+- On a real kiosk, place the camera far enough back for upper body and hands to fit in frame. CSS does not increase camera field of view.
+
+## V04 — Refined V03 Portrait
+- Keeps the original tall arched gold frame, color palette, and existing UI elements.
+- On portrait screens, gives the frame additional side/top/bottom breathing room and a little less height.
+- Preserves camera, WASM setup, gesture logic, JavaScript, and port **3107** unchanged.
+- Test Chrome Device Toolbar at **540 × 960** and **1080 × 1920**.
+
+
+## V05 — Wings of Light
+- Built on approved V04: retains arched frame, portrait composition, CSS, MediaPipe 0.10.21 and **port 3107**.
+- Existing Awaken spell: raise one wrist above shoulder for ~0.7 seconds.
+- New Wings: stretch BOTH arms sideways around shoulder height for 1 second. Glowing translucent wing shapes follow smoothed shoulder landmarks.
+- Second progress indicator; wing sparkle burst on trigger. No new npm dependencies.
+- This is a stylized 2D overlay, not true behind-body occlusion: segmentation is a future enhancement.
+- Avoid close-up camera framing: stand far enough back to see both wrists and shoulders.
+- Keep the working V04 backup before installing. Run npm install, npm run dev, then http://localhost:3107.
+- This version has been syntax checked but has not been tested with a real webcam here.
