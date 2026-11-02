@@ -60,11 +60,17 @@ export default function MagicMirror(){
         const isVisible=(p)=>p && (p.visibility??1)>.6;
         // The wings are activated when both arms extend horizontally, not simply raised.
         const leftElbow=lm[13],rightElbow=lm[14];
-        const extended=[leftShoulder,shoulder,leftElbow,rightElbow,leftWrist,wrist].every(isVisible)
-          && Math.abs(leftWrist.y-leftShoulder.y)<.18
-          && Math.abs(wrist.y-shoulder.y)<.18
-          && leftWrist.x<leftShoulder.x-.12 && wrist.x>shoulder.x+.12
-          && leftElbow.x<leftShoulder.x && rightElbow.x>shoulder.x;
+        // MediaPipe landmarks are in camera-image coordinates (before mirroring).
+        // Use shoulder-relative arm span without assuming camera-left/right orientation.
+        const shoulderWidth=Math.abs(shoulder.x-leftShoulder.x);
+        const armSpan=Math.abs(leftWrist.x-wrist.x);
+        const visibleArms=[leftShoulder,shoulder,leftElbow,rightElbow,leftWrist,wrist].every(isVisible);
+        const extended=visibleArms
+          && Math.abs(leftWrist.y-leftShoulder.y)<.22
+          && Math.abs(wrist.y-shoulder.y)<.22
+          && armSpan>Math.max(.24,shoulderWidth*2.0)
+          && Math.abs(leftWrist.x-leftShoulder.x)>shoulderWidth*.55
+          && Math.abs(wrist.x-shoulder.x)>shoulderWidth*.55;
         const wings=wingsRef.current;
         const cx=w-(ox+((leftShoulder.x+shoulder.x)/2)*dw);
         const cy=oy+((leftShoulder.y+shoulder.y)/2)*dh;

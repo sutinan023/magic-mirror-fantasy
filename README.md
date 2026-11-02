@@ -48,3 +48,10 @@
 - Avoid close-up camera framing: stand far enough back to see both wrists and shoulders.
 - Keep the working V04 backup before installing. Run npm install, npm run dev, then http://localhost:3107.
 - This version has been syntax checked but has not been tested with a real webcam here.
+
+
+## V05.1 Wings Gesture Fix
+- Fixes left/right horizontal-coordinate assumptions on mirrored camera preview.
+- Checks arm extension using arm span relative to shoulder width.
+- Stand far enough to fit both wrists within the camera image; for portrait displays a landscape-oriented camera may help.
+- Does not change the portrait mirror UI, MediaPipe initialization, or local port 3107.
