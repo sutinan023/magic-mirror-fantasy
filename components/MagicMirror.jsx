@@ -231,8 +231,53 @@ export default function MagicMirror(){
    phaseRef.current='play';setPhase('play');setStatus('ยกมือข้างใดข้างหนึ่งให้สูงกว่าไหล่');rafRef.current=requestAnimationFrame(draw);
   }catch(err){console.error('Magic Mirror startup failed at:',stage,err);stop();const reason=err instanceof Error?`${err.name}: ${err.message}`:String(err);let tip='';if(err?.name==='NotAllowedError'||err?.name==='PermissionDeniedError')tip=' — กรุณาอนุญาตกล้องใน Site Settings';else if(err?.name==='NotFoundError')tip=' — ไม่พบกล้องที่เชื่อมต่อ';else if(err?.name==='NotReadableError')tip=' — กล้องอาจถูกโปรแกรมอื่นใช้งานอยู่';else if(stage.includes('WASM')||stage.includes('Pose'))tip=' — ตรวจสอบไฟล์ /mediapipe/wasm และการเชื่อมต่อ Google Storage';setError(`ขั้นตอน: ${stage} | ${reason}${tip}`);setPhase('welcome')}
  };
- const capture=()=>{const c=canvasRef.current;if(!c)return;try{setSnapshot(c.toDataURL('image/png'));setPhase('capture');cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;}catch{setError('ไม่สามารถบันทึกภาพได้')}};
- const reset=()=>{stop();setPhase('welcome');setSnapshot(null);setStatus('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม');setError(null)};
+ const makePhotoFile=(dataUrl)=>{
+  const [header,base64]=dataUrl.split(',');
+  const mime=header.match(/data:([^;]+)/)?.[1]||'image/png';
+  const binary=atob(base64);
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  const filename=`magic-mirror-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;
+  return new File([bytes],filename,{type:mime});
+ };
+ const photoFileRef=useRef(null);
+ const capture=()=>{const c=canvasRef.current;if(!c)return;try{const data=c.toDataURL('image/png');photoFileRef.current=makePhotoFile(data);setSnapshot(data);setPhase('capture');cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;}catch{setError('ไม่สามารถบันทึกภาพได้')}};
+ // Use a Blob download instead of relying on the `download` attribute for a data URL.
+ // Some mobile browsers require the user to save the opened image manually.
+ const savePhoto=()=>{
+  const file=photoFileRef.current;
+  if(!file)return;
+  try {
+   const url=URL.createObjectURL(file);
+   const anchor=document.createElement('a');
+   anchor.href=url;anchor.download=file.name;
+   document.body.appendChild(anchor);anchor.click();anchor.remove();
+   setTimeout(()=>URL.revokeObjectURL(url),60000);
+   setError(null);
+  } catch(err){console.error('Download failed',err);setError('ดาวน์โหลดไม่สำเร็จ ลองใช้ปุ่มแชร์/บันทึกบนมือถือ');}
+ };
+ const sharePhoto=async()=>{
+  const file=photoFileRef.current;
+  if(!file)return;
+  // Keep navigator.share directly in the tap handler: mobile browsers require user activation.
+  if(typeof navigator.share==='function' && typeof navigator.canShare==='function' && navigator.canShare({files:[file]})){
+   try {
+    await navigator.share({files:[file],title:'My Magic Mirror Photo'});
+    setError(null);
+    return;
+   }catch(err){
+    if(err?.name==='AbortError')return; // user cancelled
+    console.error('Share failed',err);
+   }
+  }
+  setError('อุปกรณ์นี้ไม่รองรับการแชร์รูปโดยตรง กรุณาแตะรูปค้างเพื่อบันทึก หรือใช้ปุ่มดาวน์โหลด');
+ };
+ const openPhoto=()=>{
+  if(!snapshot)return;
+  // Keep fallback image visible inside page; window.open(data:) is blocked by some mobile browsers.
+  setError('แตะรูปภาพค้างแล้วเลือก “บันทึกรูปภาพ” หรือ “ดาวน์โหลดรูปภาพ” ตามเมนูของอุปกรณ์');
+ };
+ const reset=()=>{stop();setPhase('welcome');setSnapshot(null);photoFileRef.current=null;setStatus('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม');setError(null)};
  return <main className="app-shell"><div className="site-stars" aria-hidden="true"/><section className="info-panel">
   <span className="eyebrow"><Sparkles size={16}/> AN INTERACTIVE FANTASY EXPERIENCE</span><h1>THE<br/><em>ENCHANTED</em><br/>MIRROR<span className="star-dot">✧</span></h1>
   <div className="gold-rule"/><p className="lead">ก้าวเข้าสู่โลกเวทมนตร์ที่มีชีวิต<br/>เพียงยกมือ… แล้วปล่อยให้แสงมหัศจรรย์ติดตามคุณ</p>
@@ -250,7 +295,7 @@ export default function MagicMirror(){
   {phase==='welcome'&&<button className="primary-action" onClick={start}><Camera size={18}/> เข้าสู่โลกเวทมนตร์</button>}
   {phase==='loading'&&<button className="primary-action" disabled>กำลังเตรียมระบบ...</button>}
   {phase==='play'&&<><button className="icon-action" onClick={()=>setMuted(v=>!v)} title={muted?'เปิดเสียง':'ปิดเสียง'}>{muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><button className="primary-action" onClick={capture}><Camera size={18}/> ถ่ายภาพเวทมนตร์</button><button className="icon-action" onClick={reset} title="เริ่มใหม่"><RefreshCcw size={18}/></button></>}
-  {phase==='capture'&&<><a className="primary-action" href={snapshot??'#'} download="enchanted-mirror.png"><Download size={18}/> บันทึกรูปภาพ</a><button className="secondary-action" onClick={start}><RefreshCcw size={16}/> เล่นอีกครั้ง</button></>}
+  {phase==='capture'&&<><button className="primary-action" onClick={sharePhoto}><Download size={18}/> แชร์ / บันทึกบนมือถือ</button><button className="secondary-action" onClick={savePhoto}>ดาวน์โหลด PNG</button><button className="secondary-action" onClick={openPhoto}>วิธีบันทึกรูป</button><button className="secondary-action" onClick={start}><RefreshCcw size={16}/> เล่นอีกครั้ง</button></>}
  </div>{error&&<p className="error-text"><CameraOff size={16}/>{error}<br/>ตรวจสอบสิทธิ์กล้อง อินเทอร์เน็ต แล้วลองใหม่</p>}</div></section>
  <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 07</footer></main>
 }

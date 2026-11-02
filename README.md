@@ -23,3 +23,19 @@ Open http://localhost:3107. Run `npm run build` before pushing to GitHub. Never 
 5. Test FPS on mobile via Vercel HTTPS; reduce particle count if FPS drops.
 
 **Known limitation:** The 33-point Pose model approximates a palm anchor. Precise palm rotation and open-palm detection require a separate Hand Landmarker in a future version. Build/runtime camera testing still required.
+
+
+## V07.1 Photo Save Patch
+- Photo result downloads as a local PNG through a Blob object URL.
+- Added 'เปิดรูปเพื่อบันทึก' fallback for mobile browsers that open rather than download.
+- Preserves UI, video processing, gestures, effects, and port 3107.
+- Chrome/Android: check Downloads. On iOS Safari: use the share sheet or long-press to save the opened image.
+
+
+## V07.2 Mobile Save
+- เมื่อถ่ายภาพ จะสร้าง PNG File ไว้ทันที
+- ปุ่ม แชร์ / บันทึกบนมือถือ ใช้ Web Share API ใน user tap โดยตรง (iOS/Android ที่รองรับ)
+- ปุ่ม ดาวน์โหลด PNG ยังใช้ Blob download สำหรับ Desktop
+- หากอุปกรณ์ไม่รองรับ ให้แตะภาพตัวอย่างค้างเพื่อเลือก Save Image/Download Image
+- ไม่อัปโหลดภาพขึ้น Server ภาพถูกประมวลผลใน Browser เท่านั้น
+- ไม่เปลี่ยน UI กระจก, Gesture, Effect, WASM หรือพอร์ต 3107
