@@ -13,9 +13,9 @@ function drawWings(ctx,centerX,centerY,span,angle,alpha,timestamp){
   ctx.save();ctx.scale(side,1);
   const reach=span*(1.2+flap),rise=span*.83,fall=span*1.02;
   const g=ctx.createLinearGradient(0,-rise,reach,fall);
-  g.addColorStop(0,`rgba(255,242,196,${.48*alpha})`);
-  g.addColorStop(.55,`rgba(217,157,255,${.32*alpha})`);
-  g.addColorStop(1,'rgba(89,191,229,0)');
+  g.addColorStop(0,`rgba(255,236,190,${.32*alpha})`);
+  g.addColorStop(.55,`rgba(184,130,255,${.24*alpha})`);
+  g.addColorStop(1,'rgba(88,204,246,0)');
   ctx.fillStyle=g;ctx.strokeStyle=`rgba(255,220,164,${.65*alpha})`;ctx.lineWidth=2.5;
   ctx.beginPath();ctx.moveTo(0,0);ctx.bezierCurveTo(reach*.45,-rise*.9,reach,-rise*1.12,reach,-rise*.22);
   ctx.bezierCurveTo(reach*1.05,rise*.15,reach*.52,rise*.28,0,span*.15);
@@ -23,9 +23,91 @@ function drawWings(ctx,centerX,centerY,span,angle,alpha,timestamp){
   ctx.beginPath();ctx.moveTo(0,span*.1);ctx.bezierCurveTo(reach*.95,span*.02,reach*.88,fall*.95,reach*.45,fall);
   ctx.bezierCurveTo(reach*.2,fall*1.05,reach*.1,span*.62,0,span*.16);
   ctx.closePath();ctx.fill();ctx.stroke();
-  ctx.strokeStyle=`rgba(255,238,193,${.45*alpha})`;ctx.lineWidth=1.3;
+  ctx.strokeStyle=`rgba(255,222,163,${.65*alpha})`;ctx.lineWidth=1.15;
   for(let i=1;i<=3;i++){ctx.beginPath();ctx.moveTo(0,0);ctx.quadraticCurveTo(reach*(.26+i*.12),-rise*.27,reach*(.42+i*.16),-rise*(.95-i*.17));ctx.stroke();}
+  // Prism filaments: thin crystalline veins rather than cartoon wing blobs.
+  for(let i=0;i<6;i++){
+    const y0=-rise*(.05+i*.10),x1=reach*(.38+i*.10),y1=-rise*(.90-i*.13);
+    ctx.beginPath();ctx.moveTo(0,span*.03);
+    ctx.quadraticCurveTo(reach*.40,y0,x1,y1);
+    ctx.strokeStyle=`rgba(${i%2?'134,220,245':'236,170,255'},${.30*alpha})`;
+    ctx.lineWidth=.95;ctx.stroke();
+  }
   ctx.restore();
+ }
+ ctx.restore();
+}
+
+// Pose Landmarker also provides thumb/index/pinky landmarks (22/20/18 on the
+// right, 21/19/17 on the left). Estimate the middle of the palm instead of
+// anchoring the spell directly on the wrist. If fingers are outside the shot,
+// extend the elbow -> wrist vector by a modest amount as a fallback.
+function palmAnchor(lm, side){
+ const wrist=lm[side==='right'?16:15], elbow=lm[side==='right'?14:13];
+ const index=lm[side==='right'?20:19], pinky=lm[side==='right'?18:17];
+ const visible=p=>p && (p.visibility??1)>.45 && Number.isFinite(p.x) && Number.isFinite(p.y);
+ if(!visible(wrist))return null;
+ if(visible(index)&&visible(pinky)){
+   const fingerCenter={x:(index.x+pinky.x)/2,y:(index.y+pinky.y)/2};
+   return {x:wrist.x*.20+fingerCenter.x*.80,y:wrist.y*.20+fingerCenter.y*.80};
+ }
+ if(visible(elbow))return {x:wrist.x+(wrist.x-elbow.x)*.33,y:wrist.y+(wrist.y-elbow.y)*.33};
+ return {x:wrist.x,y:wrist.y};
+}
+
+// V07: luminous hand-held arcane orb. Canvas only; no extra model or GPU dependency.
+// Coordinate anchor comes from existing palmAnchor() and is smoothed each frame.
+function drawArcaneOrb(ctx,x,y,time,activatedAt,chargeProgress){
+ const charged=activatedAt>0 && time-activatedAt<3200;
+ const t=time*.001, power=charged?1:Math.max(.16,chargeProgress/100);
+ const radius=(charged?43:28)*(1+Math.sin(t*4.3)*.055);
+ ctx.save();ctx.translate(x,y);ctx.globalCompositeOperation='screen';
+ // Massive soft aura, with violet and cyan prismatic fringes.
+ for(const [scale,color] of [[4.3,'rgba(127,61,255,0)'],[3.25,'rgba(158,86,255,0.045)']]){
+  const a=ctx.createRadialGradient(0,0,0,0,0,radius*scale);
+  a.addColorStop(0,`rgba(255,244,204,${.23*power})`);
+  a.addColorStop(.22,`rgba(255,181,95,${.24*power})`);
+  a.addColorStop(.52,`rgba(145,91,246,${.16*power})`);
+  a.addColorStop(1,color);ctx.fillStyle=a;
+  ctx.beginPath();ctx.arc(0,0,radius*scale,0,Math.PI*2);ctx.fill();
+ }
+ // Rotating rune rings: two elliptical orbits at opposing angles.
+ for(let ring=0;ring<3;ring++){
+  ctx.save();ctx.rotate((ring%2?-1:1)*t*(.65+ring*.2)+ring*1.05);
+  ctx.scale(1,.42+ring*.07);
+  ctx.strokeStyle=ring===1?`rgba(158,227,255,${.72*power})`:`rgba(255,214,142,${.84*power})`;
+  ctx.lineWidth=ring===0?2.5:1.6;ctx.setLineDash(ring===2?[4,9]:[]);
+  ctx.beginPath();ctx.ellipse(0,0,radius*(1.55+ring*.29),radius*(1.55+ring*.29),0,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+  for(let j=0;j<6;j++){
+   const a=j*Math.PI/3+t*(ring%2?-1.4:1.2);
+   const rr=radius*(1.55+ring*.29),px=Math.cos(a)*rr,py=Math.sin(a)*rr;
+   ctx.fillStyle=j%2?`rgba(151,225,255,${power})`:`rgba(255,228,164,${power})`;
+   ctx.beginPath();ctx.arc(px,py,ring===0?2.8:1.9,0,Math.PI*2);ctx.fill();
+  }
+  ctx.restore();
+ }
+ // Core of the spell, prismatic energy compressed into a white-hot center.
+ const core=ctx.createRadialGradient(-radius*.24,-radius*.22,1,0,0,radius*1.25);
+ core.addColorStop(0,`rgba(255,255,247,${.98*power})`);
+ core.addColorStop(.20,`rgba(255,235,180,${.92*power})`);
+ core.addColorStop(.48,`rgba(250,165,255,${.77*power})`);
+ core.addColorStop(.76,`rgba(108,205,255,${.46*power})`);
+ core.addColorStop(1,'rgba(97,61,236,0)');
+ ctx.fillStyle=core;ctx.beginPath();ctx.arc(0,0,radius*1.25,0,Math.PI*2);ctx.fill();
+ // Flowing plasma loops and outward star spikes.
+ for(let k=0;k<8;k++){
+  const a=t*.38+k*Math.PI/4,outer=radius*(2+Math.sin(t*3+k)*.24);
+  ctx.strokeStyle=`rgba(${k%2?'156,225,255':'255,216,151'},${.60*power})`;
+  ctx.lineWidth=k%2?1.2:1.7;ctx.beginPath();
+  ctx.moveTo(Math.cos(a)*radius*.75,Math.sin(a)*radius*.75);
+  ctx.quadraticCurveTo(Math.cos(a+.26)*outer*.85,Math.sin(a+.26)*outer*.85,Math.cos(a+.44)*outer,Math.sin(a+.44)*outer);
+  ctx.stroke();
+ }
+ // Trigger flare lasts about 0.65 seconds, easing outward.
+ if(charged){
+  const age=Math.max(0,time-charged),u=Math.min(1,age/650);
+  if(u<1){ctx.strokeStyle=`rgba(255,225,166,${.88*(1-u)})`;
+   ctx.lineWidth=5*(1-u)+1;ctx.beginPath();ctx.arc(0,0,radius*(1.1+u*4),0,Math.PI*2);ctx.stroke();}
  }
  ctx.restore();
 }
@@ -35,10 +117,10 @@ const MODEL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pos
 export default function MagicMirror(){
  const videoRef=useRef(null),canvasRef=useRef(null), landmarkerRef=useRef(null),streamRef=useRef(null),rafRef=useRef(0);
  const wingsRef=useRef({x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0}),wingHoldRef=useRef(null),lastWingTriggerRef=useRef(0),wingShownRef=useRef(false);
- const sparksRef=useRef([]),lastSeenRef=useRef(-1),handRef=useRef(null),holdStartRef=useRef(null),lastFrameRef=useRef(0),lastTriggerRef=useRef(0),activeRef=useRef(false),effectTimeRef=useRef(0),phaseRef=useRef('welcome');
+ const progressRef=useRef(0),sparksRef=useRef([]),lastSeenRef=useRef(-1),handRef=useRef(null),holdStartRef=useRef(null),lastFrameRef=useRef(0),lastTriggerRef=useRef(0),activeRef=useRef(false),effectTimeRef=useRef(0),phaseRef=useRef('welcome');
  const [phase,setPhase]=useState('welcome'),[status,setStatus]=useState('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม'),[progress,setProgress]=useState(0),[spellCount,setSpellCount]=useState(0),[wingCount,setWingCount]=useState(0),[wingProgress,setWingProgress]=useState(0),[snapshot,setSnapshot]=useState(null),[muted,setMuted]=useState(true),[error,setError]=useState(null);
  useEffect(()=>{phaseRef.current=phase},[phase]);
- const stop=useCallback(()=>{cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;holdStartRef.current=null;handRef.current=null;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
+ const stop=useCallback(()=>{cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
  useEffect(()=>()=>{stop()},[stop]);
  const playChime=useCallback(()=>{if(muted)return;try{const ctx=new AudioContext();const t=ctx.currentTime;[523.25,659.25,783.99].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t+i*.1);g.gain.exponentialRampToValueAtTime(.065,t+i*.1+.02);g.gain.exponentialRampToValueAtTime(.0001,t+i*.1+.5);o.connect(g).connect(ctx.destination);o.start(t+i*.1);o.stop(t+i*.1+.52)});setTimeout(()=>ctx.close(),1100)}catch{}},[muted]);
  const draw=useCallback((timestamp)=>{
@@ -95,17 +177,19 @@ export default function MagicMirror(){
         }
         const rightUp=isVisible(shoulder)&&isVisible(wrist)&&wrist.y<shoulder.y-.10;
         const leftUp=isVisible(leftShoulder)&&isVisible(leftWrist)&&leftWrist.y<leftShoulder.y-.10;
-        const which=rightUp?wrist:leftUp?leftWrist:null;
+        const which=rightUp?palmAnchor(lm,'right'):leftUp?palmAnchor(lm,'left'):null;
         if(which){
           // camera crop + mirror transform: pixels in frame after mirroring
           const px=w-(ox+which.x*dw),py=oy+which.y*dh;
-          handRef.current={x:px,y:py};
+          // Low-pass filter prevents the orb jittering as finger landmarks move.
+          const prev=handRef.current;
+          handRef.current=prev?{x:prev.x+(px-prev.x)*.24,y:prev.y+(py-prev.y)*.24}:{x:px,y:py};
           if(holdStartRef.current===null)holdStartRef.current=timestamp;
           const held=timestamp-holdStartRef.current;
-          setProgress(Math.min(100,Math.floor(held/700*100)));
+          progressRef.current=Math.min(100,Math.floor(held/700*100));setProgress(progressRef.current);
           if(held>=700 && timestamp-lastTriggerRef.current>1600 && !activeRef.current){activeRef.current=true;effectTimeRef.current=timestamp;lastTriggerRef.current=timestamp;setSpellCount(v=>v+1);setStatus('สำเร็จ! เวทมนตร์ตื่นขึ้นแล้ว ✨');playChime();}
           else if(!activeRef.current)setStatus('ยกมือค้างไว้เพื่อปลุกพลังเวทมนตร์');
-         }else{handRef.current=null;holdStartRef.current=null;setProgress(0);setStatus('ยกมือข้างใดข้างหนึ่งให้สูงกว่าไหล่');}
+         }else{handRef.current=null;holdStartRef.current=null;progressRef.current=0;setProgress(0);setStatus('ยกมือข้างใดข้างหนึ่งให้สูงกว่าไหล่');}
        }else{handRef.current=null;holdStartRef.current=null;wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current.target=0;setWingProgress(0);setProgress(0);setStatus('ขยับเข้ากล้องให้เห็นหัวและแขน');}
       }catch(e){console.warn('Pose detection frame skipped',e)}
     }
@@ -117,13 +201,10 @@ export default function MagicMirror(){
      const power=activeRef.current?1:.55,age=timestamp-effectTimeRef.current;
      if(activeRef.current && age>3000)activeRef.current=false;
      if(activeRef.current || holdStartRef.current!==null){
-      const count=activeRef.current?5:2;
+      const count=activeRef.current?10:3;
       for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,vel=(.35+Math.random()*2.2)*(activeRef.current?1.6:1);sparksRef.current.push({x:hand.x+(Math.random()-.5)*16,y:hand.y+(Math.random()-.5)*16,vx:Math.cos(a)*vel,vy:Math.sin(a)*vel-.5,life:35+Math.random()*35,max:70,r:1.2+Math.random()*3,hue:Math.random()>.25?44:273})}
      }
-     const pulse=1+Math.sin(timestamp/180)*.08,rad=(activeRef.current?54:28)*pulse;
-     const halo=ctx.createRadialGradient(hand.x,hand.y,1,hand.x,hand.y,rad*2.8);
-     halo.addColorStop(0,`rgba(255,242,183,${.95*power})`);halo.addColorStop(.12,`rgba(255,210,111,${.8*power})`);halo.addColorStop(.4,`rgba(178,110,249,${.33*power})`);halo.addColorStop(1,'rgba(123,74,220,0)');ctx.globalCompositeOperation='screen';ctx.fillStyle=halo;ctx.beginPath();ctx.arc(hand.x,hand.y,rad*2.8,0,Math.PI*2);ctx.fill();ctx.globalCompositeOperation='source-over';
-     ctx.save();ctx.strokeStyle=`rgba(255,221,157,${activeRef.current?.82:.46})`;ctx.lineWidth=2;ctx.translate(hand.x,hand.y);ctx.rotate(timestamp/2300);ctx.beginPath();ctx.arc(0,0,rad*.9,0,Math.PI*1.5);ctx.stroke();ctx.restore();
+     drawArcaneOrb(ctx,hand.x,hand.y,timestamp,activeRef.current?effectTimeRef.current:0,progressRef.current);
     }
     ctx.save();ctx.globalCompositeOperation='screen';sparksRef.current=sparksRef.current.filter(s=>s.life>0).slice(-500);for(const s of sparksRef.current){s.x+=s.vx;s.y+=s.vy;s.vy-=.018;s.life-=1;const alpha=Math.max(0,s.life/s.max);ctx.fillStyle=s.hue===44?`rgba(255,215,126,${alpha})`:`rgba(201,154,255,${alpha})`;ctx.beginPath();ctx.arc(s.x,s.y,s.r*alpha,0,Math.PI*2);ctx.fill();}ctx.restore();
     // gentle frame decoration
@@ -156,7 +237,7 @@ export default function MagicMirror(){
   <span className="eyebrow"><Sparkles size={16}/> AN INTERACTIVE FANTASY EXPERIENCE</span><h1>THE<br/><em>ENCHANTED</em><br/>MIRROR<span className="star-dot">✧</span></h1>
   <div className="gold-rule"/><p className="lead">ก้าวเข้าสู่โลกเวทมนตร์ที่มีชีวิต<br/>เพียงยกมือ… แล้วปล่อยให้แสงมหัศจรรย์ติดตามคุณ</p>
   <div className="instructions"><div><span>01</span><p>อนุญาตการใช้งานกล้อง</p></div><div><span>02</span><p>ยืนให้เห็นช่วงบนและยกมือเหนือไหล่</p></div><div><span>03</span><p>กางแขนค้าง 1 วินาทีเพื่อเรียกปีกเวทมนตร์</p></div></div>
-  <div className="notice"><WandSparkles size={17}/><span>Prototype 05 · Awaken + Wings of Light<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
+  <div className="notice"><WandSparkles size={17}/><span>Prototype 07 · Celestial Inferno + Arcane Prism Wings<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
  </section>
  <section className="mirror-wrap"><div className="mirror-ornament">✦ <span>THE MAGIC IS WITHIN YOU</span> ✦</div><div className="mirror-frame"><div className="mirror-inner">
   <video ref={videoRef} playsInline autoPlay muted className="hidden-video"/><canvas ref={canvasRef} width={720} height={1280} className="mirror-canvas" style={{display:phase==='play'?'block':'none'}}/>
@@ -171,5 +252,5 @@ export default function MagicMirror(){
   {phase==='play'&&<><button className="icon-action" onClick={()=>setMuted(v=>!v)} title={muted?'เปิดเสียง':'ปิดเสียง'}>{muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><button className="primary-action" onClick={capture}><Camera size={18}/> ถ่ายภาพเวทมนตร์</button><button className="icon-action" onClick={reset} title="เริ่มใหม่"><RefreshCcw size={18}/></button></>}
   {phase==='capture'&&<><a className="primary-action" href={snapshot??'#'} download="enchanted-mirror.png"><Download size={18}/> บันทึกรูปภาพ</a><button className="secondary-action" onClick={start}><RefreshCcw size={16}/> เล่นอีกครั้ง</button></>}
  </div>{error&&<p className="error-text"><CameraOff size={16}/>{error}<br/>ตรวจสอบสิทธิ์กล้อง อินเทอร์เน็ต แล้วลองใหม่</p>}</div></section>
- <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 05</footer></main>
+ <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 07</footer></main>
 }
