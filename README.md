@@ -1,32 +1,21 @@
-# Magic Mirror V08.2 — Smart Auto Capture
+# Magic Mirror V08.3 — Crystal Butterfly Shape Fix
 
-**Based on V08.1 Crystal Butterfly Deluxe**, preserving the approved V04 arched UI, V08 true-hand model, photo share/download flow, existing dependencies, and port **3107**.
+Based directly on V08.2 Smart Auto Capture, preserving the existing V04 UI, True Hand Magic, mobile save, 3-second auto capture, and port 3107.
 
-## Changes
-- After a successful wing gesture, an `ORB_APPEAR` or `BURST` hand event, automatically start a **3-second** visible countdown.
-- Wing visibility is locked for up to **5 seconds**, but continues following the shoulder landmarks during the countdown. No static frozen wing overlay.
-- Final photo is captured from the latest, already-rendered Canvas frame, not from the screenshot of the countdown overlay.
-- Cancels countdown if the Pose model loses the player for over 950 ms.
-- Keeps a **ถ่ายเอง** manual fallback.
-- Photo preview and mobile Share API unchanged. No photos are sent to a server.
+## Fixes
+- Replaced broad triangle/fan shapes with **four tapered curved wings on each side** (layered crystal butterfly silhouettes).
+- Changed inner veins from huge straight triangle facets to fine curved crystalline ribs.
+- Cap wing width to fit inside the portrait canvas; no longer draws main wingtips beyond the gold border.
+- Keep each wing rooted at the shoulder blade and preserve approximate torso occlusion.
+- None of the gesture tracking, auto capture countdown, hand magic or photo saving was changed.
 
-## Install into your existing project
-Replace `components/MagicMirror.jsx` with the bundled file. Keep `lib/trueHandMagic.js` from the ZIP or existing V08.1, and keep your existing CSS, WASM, Next.js config, package.json, and port 3107 unchanged.
+## Install
+Back up current stable code. Copy `components/MagicMirror.jsx` to replace the file in your project. Keep existing `lib/trueHandMagic.js` and all other files unchanged. In the existing project run `npm run build` and `npm run dev` (port **3107**).
 
-```bash
-npm run build
-npm run dev
-```
+## Verify
+1. Stand at camera distance similar to the screenshot. Raise arms and wait for wings; check for curved 4-lobe outline and no edge clipping.
+2. Lower arms during auto countdown. Check position stays behind the shoulders and photo retains the wings.
+3. Try near/far positions: if clipped at close distance, step back to show shoulders and arms.
+4. Confirm True Hand Magic, manual photo capture and mobile save still work.
 
-## Acceptance test
-1. Raise both arms and hold for 1 second until the wings appear. A 3→2→1 countdown starts.
-2. Lower arms a little and move side to side. Wings stay visible and track your shoulders until the image is captured.
-3. Preview should show the wings without the countdown numbers. Download on PC or Share on mobile.
-4. Restart. Show a palm or complete a hand magic burst; countdown starts automatically.
-5. Step out of camera view during countdown; it cancels and no unwanted picture is taken.
-6. Verify manual Capture is still available.
-
-## Limitations
-- No live camera test or successful Next.js production build performed in this environment.
-- Body masking is the approximate Pose-based occlusion from V08.1 (not a true segmentation mask).
-- For perfect full-body wings occlusion or exact automatic timing on all mobiles, test and iterate on actual devices.
+This is a Canvas 2D interpretation of the selected Crystal Butterfly Deluxe mockup, not a photorealistic reproduction. Torso occlusion is still based on Pose geometry instead of real person segmentation. Not camera-tested in this environment.

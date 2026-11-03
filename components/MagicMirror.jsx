@@ -7,98 +7,94 @@ const WASM='/mediapipe/wasm';
 // V08.1 — Crystal Butterfly Deluxe. Four pointed translucent crystal panels.
 // The design is anchored at each shoulder blade, not at the center of the chest.
 function drawCrystalWings(ctx, cx, cy, shoulderSpan, angle, alpha, now) {
-  const pulse = 1 + Math.sin(now / 610) * .018;
-  const flap = Math.sin(now / 820) * .035;
-  const size = Math.max(85, shoulderSpan) * pulse;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(angle);
-  for (const side of [-1, 1]) {
-    ctx.save();
-    ctx.scale(side, 1);
-    // Two separate wing roots. Nothing starts from the sternum.
-    ctx.translate(size * .43, -size * .045);
-    ctx.rotate(-flap);
-    const S = size;
-    const upper = new Path2D();
-    upper.moveTo(0, 0);
-    upper.bezierCurveTo(S*.29,-S*.53,S*.95,-S*1.0,S*1.72,-S*1.83);
-    upper.bezierCurveTo(S*1.96,-S*1.48,S*1.91,-S*.92,S*1.54,-S*.60);
-    upper.bezierCurveTo(S*1.19,-S*.36,S*.84,-S*.30,S*.68,-S*.27);
-    upper.bezierCurveTo(S*.36,-S*.19,S*.17,-S*.02,0,0);
-    upper.closePath();
-    const lower = new Path2D();
-    lower.moveTo(0, S*.075);
-    lower.bezierCurveTo(S*.44,-S*.06,S*1.15,-S*.19,S*1.63,-S*.30);
-    lower.bezierCurveTo(S*1.56,S*.30,S*1.23,S*.83,S*.92,S*1.30);
-    lower.bezierCurveTo(S*.68,S*1.02,S*.40,S*.63,S*.23,S*.37);
-    lower.bezierCurveTo(S*.12,S*.20,S*.08,S*.12,0,S*.075);
-    lower.closePath();
-    const segments=[{path:upper,upper:true},{path:lower,upper:false}];
-    for (const segment of segments) {
+  const pulse = 1 + Math.sin(now / 690) * .013;
+  const flap = Math.sin(now / 1050) * .028;
+  // In portrait view, wings must fit INSIDE the mirror, not stretch to the
+  // outer frame. The previous version grew to ~2.4x shoulder span per side.
+  const room = Math.max(90, Math.min(cx, ctx.canvas.width - cx) - 24);
+  const S = Math.max(35, Math.min(shoulderSpan * .94, room / 1.92)) * pulse;
+  const glow = Math.min(1, Math.max(0, alpha));
+  ctx.save();ctx.translate(cx, cy);ctx.rotate(angle);
+  for(const side of [-1, 1]){
+    ctx.save();ctx.scale(side,1);
+    // Two physically separate roots; each wing begins behind its shoulder.
+    ctx.translate(S*.39, -S*.06);
+    ctx.rotate(flap);
+    const lobe = (type)=>{
+      const p=new Path2D();p.moveTo(0,0);
+      if(type===0){ // long, narrow upper wing, sweeping upwards
+        p.bezierCurveTo(S*.28,-S*.35,S*.80,-S*.80,S*1.28,-S*1.55);
+        p.bezierCurveTo(S*1.44,-S*1.39,S*1.53,-S*1.15,S*1.48,-S*.89);
+        p.bezierCurveTo(S*1.43,-S*.64,S*1.26,-S*.54,S*1.05,-S*.43);
+        p.bezierCurveTo(S*.69,-S*.30,S*.35,-S*.19,0,0);
+      }else if(type===1){ // smaller upper prism between the lobes
+        p.bezierCurveTo(S*.40,-S*.27,S*.98,-S*.58,S*1.40,-S*.85);
+        p.bezierCurveTo(S*1.36,-S*.57,S*1.24,-S*.34,S*1.00,-S*.17);
+        p.bezierCurveTo(S*.66,-S*.06,S*.28,-S*.02,0,0);
+      }else if(type===2){ // flowing lower wing with tapered tip
+        p.bezierCurveTo(S*.36,S*.03,S*.90,S*.12,S*1.43,S*.32);
+        p.bezierCurveTo(S*1.48,S*.53,S*1.41,S*.79,S*1.22,S*1.05);
+        p.bezierCurveTo(S*1.03,S*.90,S*.90,S*.72,S*.71,S*.51);
+        p.bezierCurveTo(S*.49,S*.27,S*.24,S*.13,0,0);
+      }else{ // long slender lower tail, not a rounded flower petal
+        p.bezierCurveTo(S*.29,S*.25,S*.71,S*.59,S*.96,S*.79);
+        p.bezierCurveTo(S*.87,S*.95,S*.68,S*1.11,S*.50,S*1.16);
+        p.bezierCurveTo(S*.41,S*.78,S*.23,S*.42,0,0);
+      }
+      p.closePath();return p;
+    };
+    // Draw behind-to-front; each lobe has a rounded taper and separate tip.
+    const specs=[
+      {type:3,palette:['#b18aff','#62d4f5','#ffc4eb'],opacity:.45},
+      {type:2,palette:['#b77bf4','#54d8ef','#ffb9ec'],opacity:.62},
+      {type:1,palette:['#dca6ff','#60cbe8','#ffe3b0'],opacity:.62},
+      {type:0,palette:['#d3a4ff','#71ddf4','#ffe7c8'],opacity:.73},
+    ];
+    specs.forEach(({type,palette,opacity},i)=>{
+      const path=lobe(type);
       ctx.save();
-      // No screen blend here: translucent stained-glass layers retain their color.
-      const grad = ctx.createLinearGradient(0,S*.48,S*1.83,-S*1.3);
-      grad.addColorStop(0,`rgba(246,171,255,${.47*alpha})`);
-      grad.addColorStop(.32,`rgba(145,88,245,${.44*alpha})`);
-      grad.addColorStop(.64,`rgba(48,215,235,${.40*alpha})`);
-      grad.addColorStop(1,`rgba(213,153,255,${.44*alpha})`);
-      ctx.fillStyle=grad;ctx.fill(segment.path);
-      // Clip the crystal facets to the actual wing silhouette.
-      ctx.clip(segment.path);
-      const N=segment.upper?11:8;
-      for(let i=0;i<N;i++){
-        const t=i/(N-1), x=(.19+t*1.45)*S;
-        const by=segment.upper ? (-.08-t*.50)*S : (.08+t*.12)*S;
-        const tipY=segment.upper ? (-.28-t*1.12)*S : (.26+t*.95)*S;
-        const facets=ctx.createLinearGradient(x,tipY,x+S*.13,by);
-        facets.addColorStop(0,`rgba(${i%3===0?'105,245,255':'207,129,255'},${.22*alpha})`);
-        facets.addColorStop(1,'rgba(255,206,246,0)');
-        ctx.fillStyle=facets;
-        ctx.beginPath();
-        ctx.moveTo(S*.015,S*.02);
-        ctx.lineTo(x,tipY);
-        ctx.lineTo(x+S*.19,tipY+S*.18);
-        ctx.closePath();ctx.fill();
-        ctx.beginPath();ctx.moveTo(S*.02,S*.02);
-        ctx.lineTo(x,tipY);
-        ctx.strokeStyle=`rgba(255,219,174,${(.25+.22*t)*alpha})`;
-        ctx.lineWidth=Math.max(.7,S*.005);ctx.stroke();
-      }
-      // Crystalline branching lines add structure without petal shapes.
-      for(let i=0;i<7;i++){
-        const t=(i+1)/8;
-        const y=segment.upper?(-.17-1.4*t)*S:(.13+1.05*t)*S;
-        ctx.beginPath();ctx.moveTo(S*.05,0);
-        ctx.quadraticCurveTo(S*(.46+.19*t),y*.56,S*(.54+1.13*t),y);
-        ctx.strokeStyle=`rgba(${i%2?'146,240,255':'255,217,156'},${.54*alpha})`;
-        ctx.lineWidth=Math.max(1,S*.007);ctx.stroke();
-      }
+      ctx.globalAlpha=glow*opacity;
+      const grad=ctx.createLinearGradient(0,S*.24,S*1.4,-S*(type===0?1.35:.20));
+      grad.addColorStop(0,palette[0]);grad.addColorStop(.58,palette[1]);grad.addColorStop(1,palette[2]);
+      ctx.fillStyle=grad;ctx.fill(path);
       ctx.restore();
-      // Metallic-gold contours with a controlled outer glow.
-      ctx.save();ctx.shadowColor='#eec79e';ctx.shadowBlur=14*alpha;
-      ctx.strokeStyle=`rgba(255,218,151,${.91*alpha})`;
-      ctx.lineWidth=Math.max(1.4,S*.010);
-      ctx.stroke(segment.path);ctx.restore();
-    }
-    // Spine, prismatic sparkle points and hanging jewel detail.
+      // Crystal strands are curved; no straight giant triangles from the root.
+      ctx.save();ctx.clip(path);
+      for(let k=0;k<9;k++){
+        const t=(k+.5)/9;
+        const baseX=S*(.16+t*.40);
+        const tipX=S*(.60+t*.87);
+        const tipY=type===0?-S*(.33+t*1.10):type===1?-S*(.08+t*.55):type===2?S*(.19+t*.59):S*(.12+t*.75);
+        ctx.beginPath();ctx.moveTo(baseX,0);
+        ctx.bezierCurveTo(S*(.40+t*.27),tipY*.26,S*(.54+t*.51),tipY*.83,tipX,tipY);
+        ctx.strokeStyle=k%3===0?`rgba(255,231,186,${.56*glow})`:`rgba(189,238,255,${.38*glow})`;
+        ctx.lineWidth=Math.max(.8,S*.006);ctx.stroke();
+      }
+      // Dimensional iridescent highlights, curved and fine rather than opaque polygons.
+      ctx.beginPath();ctx.moveTo(S*.07,0);
+      ctx.bezierCurveTo(S*.56, -S*.13, S*.90, type<2?-S*.46:S*.45, S*1.48, type<2?-S*.90:S*.40);
+      ctx.strokeStyle=`rgba(255,247,235,${.17*glow})`;ctx.lineWidth=Math.max(1,S*.020);ctx.stroke();
+      ctx.restore();
+      ctx.save();ctx.shadowBlur=12*glow;ctx.shadowColor='#f8cbaf';
+      ctx.strokeStyle=`rgba(255,220,160,${.85*glow})`;
+      ctx.lineWidth=Math.max(1.1,S*.008);ctx.stroke(path);ctx.restore();
+    });
+    // Golden spine follows the curve of the leading upper lobe.
     ctx.beginPath();ctx.moveTo(0,0);
-    ctx.bezierCurveTo(S*.30,-S*.28,S*1.02,-S*.77,S*1.72,-S*1.83);
-    ctx.strokeStyle=`rgba(255,231,189,${.88*alpha})`;
-    ctx.lineWidth=Math.max(1.2,S*.009);ctx.stroke();
-    for(let i=0;i<12;i++){
-      const t=i/11;
-      const x=S*(.21+t*1.52),y=-S*(.16+t*1.52);
-      const twinkle=(.6+.4*Math.sin(now/480+i*2.6));
-      ctx.save();ctx.translate(x,y);
-      ctx.fillStyle=`rgba(255,235,189,${twinkle*.79*alpha})`;
-      ctx.beginPath();ctx.moveTo(0,-3.5);ctx.lineTo(1.5,0);ctx.lineTo(0,3.5);ctx.lineTo(-1.5,0);ctx.closePath();ctx.fill();ctx.restore();
+    ctx.bezierCurveTo(S*.32,-S*.26,S*.92,-S*.93,S*1.28,-S*1.55);
+    ctx.strokeStyle=`rgba(255,233,187,${.85*glow})`;
+    ctx.lineWidth=Math.max(1.4,S*.011);ctx.stroke();
+    for(let i=0;i<9;i++){
+      const t=i/8,x=S*(.22+t*.92),y=-S*(.18+t*1.06);
+      const shine=(.5+.5*Math.sin(now/520+i*2.1));
+      ctx.save();ctx.translate(x,y);ctx.rotate(Math.PI/4);
+      ctx.fillStyle=`rgba(255,241,197,${shine*.66*glow})`;
+      ctx.fillRect(-1.4,-1.4,2.8,2.8);ctx.restore();
     }
     ctx.restore();
   }
   ctx.restore();
 }
-
 // Clip only the approximate torso/head area of the person. This is deliberately
 // lighter than AI segmentation and prevents wing contours from covering the chest.
 // The mask is approximate for sideways poses; real occlusion requires segmentation.
