@@ -1,0 +1,1 @@
+Place existing wing-left-base.png, wing-right-base.png, wing-left-glow.png, wing-right-glow.png here. No asset images bundled.

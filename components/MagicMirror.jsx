@@ -2,99 +2,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Download, RefreshCcw, Sparkles, WandSparkles, Volume2, VolumeX } from 'lucide-react';
 import { createHandMagic } from '../lib/trueHandMagic';
+import { loadPremiumWings, drawPremiumWings } from '../lib/premiumWings';
+import { createBodySegmentation } from '../lib/bodySegmentation';
 
 const WASM='/mediapipe/wasm';
-// V08.1 — Crystal Butterfly Deluxe. Four pointed translucent crystal panels.
-// The design is anchored at each shoulder blade, not at the center of the chest.
-function drawCrystalWings(ctx, cx, cy, shoulderSpan, angle, alpha, now) {
-  const pulse = 1 + Math.sin(now / 690) * .013;
-  const flap = Math.sin(now / 1050) * .028;
-  // In portrait view, wings must fit INSIDE the mirror, not stretch to the
-  // outer frame. The previous version grew to ~2.4x shoulder span per side.
-  const room = Math.max(90, Math.min(cx, ctx.canvas.width - cx) - 24);
-  const S = Math.max(35, Math.min(shoulderSpan * .94, room / 1.92)) * pulse;
-  const glow = Math.min(1, Math.max(0, alpha));
-  ctx.save();ctx.translate(cx, cy);ctx.rotate(angle);
-  for(const side of [-1, 1]){
-    ctx.save();ctx.scale(side,1);
-    // Two physically separate roots; each wing begins behind its shoulder.
-    ctx.translate(S*.39, -S*.06);
-    ctx.rotate(flap);
-    const lobe = (type)=>{
-      const p=new Path2D();p.moveTo(0,0);
-      if(type===0){ // long, narrow upper wing, sweeping upwards
-        p.bezierCurveTo(S*.28,-S*.35,S*.80,-S*.80,S*1.28,-S*1.55);
-        p.bezierCurveTo(S*1.44,-S*1.39,S*1.53,-S*1.15,S*1.48,-S*.89);
-        p.bezierCurveTo(S*1.43,-S*.64,S*1.26,-S*.54,S*1.05,-S*.43);
-        p.bezierCurveTo(S*.69,-S*.30,S*.35,-S*.19,0,0);
-      }else if(type===1){ // smaller upper prism between the lobes
-        p.bezierCurveTo(S*.40,-S*.27,S*.98,-S*.58,S*1.40,-S*.85);
-        p.bezierCurveTo(S*1.36,-S*.57,S*1.24,-S*.34,S*1.00,-S*.17);
-        p.bezierCurveTo(S*.66,-S*.06,S*.28,-S*.02,0,0);
-      }else if(type===2){ // flowing lower wing with tapered tip
-        p.bezierCurveTo(S*.36,S*.03,S*.90,S*.12,S*1.43,S*.32);
-        p.bezierCurveTo(S*1.48,S*.53,S*1.41,S*.79,S*1.22,S*1.05);
-        p.bezierCurveTo(S*1.03,S*.90,S*.90,S*.72,S*.71,S*.51);
-        p.bezierCurveTo(S*.49,S*.27,S*.24,S*.13,0,0);
-      }else{ // long slender lower tail, not a rounded flower petal
-        p.bezierCurveTo(S*.29,S*.25,S*.71,S*.59,S*.96,S*.79);
-        p.bezierCurveTo(S*.87,S*.95,S*.68,S*1.11,S*.50,S*1.16);
-        p.bezierCurveTo(S*.41,S*.78,S*.23,S*.42,0,0);
-      }
-      p.closePath();return p;
-    };
-    // Draw behind-to-front; each lobe has a rounded taper and separate tip.
-    const specs=[
-      {type:3,palette:['#b18aff','#62d4f5','#ffc4eb'],opacity:.45},
-      {type:2,palette:['#b77bf4','#54d8ef','#ffb9ec'],opacity:.62},
-      {type:1,palette:['#dca6ff','#60cbe8','#ffe3b0'],opacity:.62},
-      {type:0,palette:['#d3a4ff','#71ddf4','#ffe7c8'],opacity:.73},
-    ];
-    specs.forEach(({type,palette,opacity},i)=>{
-      const path=lobe(type);
-      ctx.save();
-      ctx.globalAlpha=glow*opacity;
-      const grad=ctx.createLinearGradient(0,S*.24,S*1.4,-S*(type===0?1.35:.20));
-      grad.addColorStop(0,palette[0]);grad.addColorStop(.58,palette[1]);grad.addColorStop(1,palette[2]);
-      ctx.fillStyle=grad;ctx.fill(path);
-      ctx.restore();
-      // Crystal strands are curved; no straight giant triangles from the root.
-      ctx.save();ctx.clip(path);
-      for(let k=0;k<9;k++){
-        const t=(k+.5)/9;
-        const baseX=S*(.16+t*.40);
-        const tipX=S*(.60+t*.87);
-        const tipY=type===0?-S*(.33+t*1.10):type===1?-S*(.08+t*.55):type===2?S*(.19+t*.59):S*(.12+t*.75);
-        ctx.beginPath();ctx.moveTo(baseX,0);
-        ctx.bezierCurveTo(S*(.40+t*.27),tipY*.26,S*(.54+t*.51),tipY*.83,tipX,tipY);
-        ctx.strokeStyle=k%3===0?`rgba(255,231,186,${.56*glow})`:`rgba(189,238,255,${.38*glow})`;
-        ctx.lineWidth=Math.max(.8,S*.006);ctx.stroke();
-      }
-      // Dimensional iridescent highlights, curved and fine rather than opaque polygons.
-      ctx.beginPath();ctx.moveTo(S*.07,0);
-      ctx.bezierCurveTo(S*.56, -S*.13, S*.90, type<2?-S*.46:S*.45, S*1.48, type<2?-S*.90:S*.40);
-      ctx.strokeStyle=`rgba(255,247,235,${.17*glow})`;ctx.lineWidth=Math.max(1,S*.020);ctx.stroke();
-      ctx.restore();
-      ctx.save();ctx.shadowBlur=12*glow;ctx.shadowColor='#f8cbaf';
-      ctx.strokeStyle=`rgba(255,220,160,${.85*glow})`;
-      ctx.lineWidth=Math.max(1.1,S*.008);ctx.stroke(path);ctx.restore();
-    });
-    // Golden spine follows the curve of the leading upper lobe.
-    ctx.beginPath();ctx.moveTo(0,0);
-    ctx.bezierCurveTo(S*.32,-S*.26,S*.92,-S*.93,S*1.28,-S*1.55);
-    ctx.strokeStyle=`rgba(255,233,187,${.85*glow})`;
-    ctx.lineWidth=Math.max(1.4,S*.011);ctx.stroke();
-    for(let i=0;i<9;i++){
-      const t=i/8,x=S*(.22+t*.92),y=-S*(.18+t*1.06);
-      const shine=(.5+.5*Math.sin(now/520+i*2.1));
-      ctx.save();ctx.translate(x,y);ctx.rotate(Math.PI/4);
-      ctx.fillStyle=`rgba(255,241,197,${shine*.66*glow})`;
-      ctx.fillRect(-1.4,-1.4,2.8,2.8);ctx.restore();
-    }
-    ctx.restore();
-  }
-  ctx.restore();
-}
 // Clip only the approximate torso/head area of the person. This is deliberately
 // lighter than AI segmentation and prevents wing contours from covering the chest.
 // The mask is approximate for sideways poses; real occlusion requires segmentation.
@@ -201,6 +112,8 @@ const MODEL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pos
 
 export default function MagicMirror(){
  const videoRef=useRef(null),canvasRef=useRef(null), landmarkerRef=useRef(null),streamRef=useRef(null),rafRef=useRef(0);
+  const premiumWingsRef=useRef(null),bodySegRef=useRef(null),lastSegFrameRef=useRef(0);
+  const [wingAssetStatus,setWingAssetStatus]=useState('pending'),[segStatus,setSegStatus]=useState('pending');
  // Auto capture is driven by the video render clock, NOT by a timeout that may fire
  // before the latest wings and hand particles have been painted on the Canvas.
  const autoPhotoRef=useRef(null),captureFrameRef=useRef(null),wingLockUntilRef=useRef(0),lastPoseSeenRef=useRef(0);
@@ -211,7 +124,8 @@ export default function MagicMirror(){
  const progressRef=useRef(0),sparksRef=useRef([]),lastSeenRef=useRef(-1),handRef=useRef(null),holdStartRef=useRef(null),lastFrameRef=useRef(0),lastTriggerRef=useRef(0),activeRef=useRef(false),effectTimeRef=useRef(0),phaseRef=useRef('welcome');
  const [phase,setPhase]=useState('welcome'),[status,setStatus]=useState('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม'),[progress,setProgress]=useState(0),[spellCount,setSpellCount]=useState(0),[wingCount,setWingCount]=useState(0),[wingProgress,setWingProgress]=useState(0),[snapshot,setSnapshot]=useState(null),[muted,setMuted]=useState(true),[error,setError]=useState(null),[handStatus,setHandStatus]=useState('เริ่มระบบเวทมือ'),[handMode,setHandMode]=useState(false),[chargePercent,setChargePercent]=useState(0);
  useEffect(()=>{phaseRef.current=phase},[phase]);
- const stop=useCallback(()=>{autoPhotoRef.current=null;captureFrameRef.current=null;wingLockUntilRef.current=0;lastPoseSeenRef.current=0;setCountdown(null);setPhotoCue('');cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;handMagicRef.current?.close();handMagicRef.current=null;handMagicLastRef.current=null;handMagicFrameRef.current=0;handBurstRef.current=0;wingLandmarksRef.current=null;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
+ const stop=useCallback(()=>{autoPhotoRef.current=null;captureFrameRef.current=null;wingLockUntilRef.current=0;lastPoseSeenRef.current=0;setCountdown(null);setPhotoCue('');cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;
+  bodySegRef.current?.close();bodySegRef.current=null;lastSegFrameRef.current=0;handMagicRef.current?.close();handMagicRef.current=null;handMagicLastRef.current=null;handMagicFrameRef.current=0;handBurstRef.current=0;wingLandmarksRef.current=null;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
  useEffect(()=>()=>{stop()},[stop]);
  const playChime=useCallback(()=>{if(muted)return;try{const ctx=new AudioContext();const t=ctx.currentTime;[523.25,659.25,783.99].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t+i*.1);g.gain.exponentialRampToValueAtTime(.065,t+i*.1+.02);g.gain.exponentialRampToValueAtTime(.0001,t+i*.1+.5);o.connect(g).connect(ctx.destination);o.start(t+i*.1);o.stop(t+i*.1+.52)});setTimeout(()=>ctx.close(),1100)}catch{}},[muted]);
  const draw=useCallback((timestamp)=>{
@@ -230,7 +144,7 @@ export default function MagicMirror(){
     const vw=video.videoWidth,vh=video.videoHeight,scale=Math.max(w/vw,h/vh),dw=vw*scale,dh=vh*scale,ox=(w-dw)/2,oy=(h-dh)/2;
     ctx.save();ctx.translate(w,0);ctx.scale(-1,1);ctx.drawImage(video,ox,oy,dw,dh);ctx.restore();
     // restrained fantasy treatment
-    const vignette=ctx.createRadialGradient(w/2,h*.46,w*.12,w/2,h*.48,w*.76);vignette.addColorStop(0,'rgba(20,10,40,0)');vignette.addColorStop(1,'rgba(19,9,43,.7)');ctx.fillStyle=vignette;ctx.fillRect(0,0,w,h);
+
     if(timestamp-lastFrameRef.current>32){
       lastFrameRef.current=timestamp;
       try{
@@ -323,15 +237,37 @@ export default function MagicMirror(){
         }
       }catch(e){console.warn('Hand detection frame skipped',e);}
     }
-    const wings=wingsRef.current;
-    if(timestamp<wingLockUntilRef.current)wings.target=1;
+     // Person mask at ~10 FPS. Capture the copied pixels while MediaPipe's callback is valid.
+     if(bodySegRef.current && timestamp-lastSegFrameRef.current>=100){
+       lastSegFrameRef.current=timestamp;
+       try{bodySegRef.current.detect(video,timestamp)}
+       catch(err){console.warn('Segmentation disabled after runtime error',err);bodySegRef.current?.close();bodySegRef.current=null;setSegStatus('fallback')}
+     }
+     const wings=wingsRef.current;
+     if(timestamp<wingLockUntilRef.current)wings.target=1;
     wings.opacity+=(wings.target-wings.opacity)*.10;
-    if(wings.opacity>.015 && wings.span>0){
-      ctx.save();
-      clipWingsOutsideBody(ctx,wingLandmarksRef.current,w,dw,dh,ox,oy);
-      drawCrystalWings(ctx,wings.x,wings.y,wings.span,wings.angle,wings.opacity,timestamp);
-      ctx.restore();
-    }
+     if(wings.opacity>.015 && wings.span>0 && premiumWingsRef.current){
+       if(!bodySegRef.current){
+         // Fallback: preserve the old approximate torso cutout if segmentation is unavailable.
+         ctx.save();clipWingsOutsideBody(ctx,wingLandmarksRef.current,w,dw,dh,ox,oy);
+         drawPremiumWings(ctx,premiumWingsRef.current,wings,timestamp);ctx.restore();
+       }else{
+         // Camera was drawn above. Draw wings, then composite ONLY the original person
+         // back on top to create true wing-behind-body occlusion.
+         drawPremiumWings(ctx,premiumWingsRef.current,wings,timestamp);
+         const composited=bodySegRef.current.drawForeground(ctx,video,{width:w,height:h,dw,dh,ox,oy});
+         if(!composited){
+           // Before the first mask returns, use the torso approximation as a one-frame bridge.
+           // Don't cover the video a second time: mask is not ready yet.
+         }
+       }
+     }
+
+    // Apply the same vignette to background, wings and reconstructed foreground.
+    const vignette=ctx.createRadialGradient(w/2,h*.46,w*.12,w/2,h*.48,w*.76);
+    vignette.addColorStop(0,'rgba(20,10,40,0)');
+    vignette.addColorStop(1,'rgba(19,9,43,.7)');
+    ctx.fillStyle=vignette;ctx.fillRect(0,0,w,h);
     const hand=handRef.current;
     if(hand){
      const power=activeRef.current?1:.55,age=timestamp-effectTimeRef.current;
@@ -376,7 +312,7 @@ export default function MagicMirror(){
    }
   rafRef.current=requestAnimationFrame(draw);
  },[playChime]);
- const start=async()=>{let stage='เริ่มต้น';stop();setError(null);setStatus('กำลังเปิดประตูเวทมนตร์...');setPhase('loading');setProgress(0);setSpellCount(0);setWingCount(0);setWingProgress(0);setSnapshot(null);setCountdown(null);setPhotoCue('');setHandMode(false);setHandStatus('กำลังเปิดระบบติดตามมือ...');setChargePercent(0);try{
+ const start=async()=>{let stage='เริ่มต้น';stop();setError(null);setStatus('กำลังเปิดประตูเวทมนตร์...');setPhase('loading');setProgress(0);setSpellCount(0);setWingCount(0);setWingProgress(0);setSnapshot(null);setCountdown(null);setPhotoCue('');setWingAssetStatus('pending');setSegStatus('pending');setHandMode(false);setHandStatus('กำลังเปิดระบบติดตามมือ...');setChargePercent(0);try{
    if(!navigator.mediaDevices?.getUserMedia)throw new Error('เบราว์เซอร์นี้ไม่รองรับกล้อง หรือไม่ได้ใช้ HTTPS/localhost');
    stage='ขอสิทธิ์กล้อง';setStatus('กำลังขอสิทธิ์กล้อง...');
    const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'}});streamRef.current=stream;
@@ -391,8 +327,14 @@ export default function MagicMirror(){
      console.warn('GPU unavailable, falling back to CPU',gpuError);
      model = await PoseLandmarker.createFromOptions(fileset,{baseOptions:{modelAssetPath:MODEL,delegate:'CPU'},runningMode:'VIDEO',numPoses:1,minPoseDetectionConfidence:.6,minTrackingConfidence:.6});
    }
-   landmarkerRef.current=model;
-   stage='โหลด Hand Landmarker';setStatus('กำลังโหลด Hand Landmarker...');
+       landmarkerRef.current=model;
+    stage='โหลดไฟล์ปีก Crystal Butterfly Deluxe';setStatus('กำลังโหลดภาพปีกคริสตัล...');
+    try{premiumWingsRef.current=await loadPremiumWings();setWingAssetStatus('ready');}
+    catch(assetError){console.error('Wing images missing',assetError);premiumWingsRef.current=null;setWingAssetStatus('missing');}
+    stage='โหลด Body Segmentation';setStatus('กำลังเตรียมระบบแยกตัวคน...');
+    try{bodySegRef.current=await createBodySegmentation({wasmPath:WASM});setSegStatus('ready');}
+    catch(segError){console.warn('Segmentation unavailable; approximate torso clipping enabled',segError);bodySegRef.current=null;setSegStatus('fallback');}
+    stage='โหลด Hand Landmarker';setStatus('กำลังโหลด Hand Landmarker...');
    try{handMagicRef.current=await createHandMagic({wasmPath:WASM});setHandMode(true);setHandStatus('แบมือเพื่อเรียกลูกแก้ว');}
    catch(handError){console.warn('Hand tracking unavailable; Pose fallback enabled',handError);handMagicRef.current=null;setHandMode(false);setHandStatus('Hand Tracking ไม่พร้อม: ใช้โหมดเดิม');}
    phaseRef.current='play';setPhase('play');setStatus(handMagicRef.current?'แบมือ → กำมือ → แบมือ เพื่อปล่อยพลัง':'ยกมือข้างใดข้างหนึ่งให้สูงกว่าไหล่');rafRef.current=requestAnimationFrame(draw);
@@ -455,14 +397,14 @@ export default function MagicMirror(){
   <span className="eyebrow"><Sparkles size={16}/> AN INTERACTIVE FANTASY EXPERIENCE</span><h1>THE<br/><em>ENCHANTED</em><br/>MIRROR<span className="star-dot">✧</span></h1>
   <div className="gold-rule"/><p className="lead">ก้าวเข้าสู่โลกเวทมนตร์ที่มีชีวิต<br/>เพียงยกมือ… แล้วปล่อยให้แสงมหัศจรรย์ติดตามคุณ</p>
   <div className="instructions"><div><span>01</span><p>อนุญาตการใช้งานกล้อง</p></div><div><span>02</span><p>ยืนให้เห็นช่วงบนและยกมือเหนือไหล่</p></div><div><span>03</span><p>กางแขนค้าง 1 วินาทีเพื่อเรียกปีกเวทมนตร์</p></div></div>
-  <div className="notice"><WandSparkles size={17}/><span>Prototype 08.2 · Smart Auto Capture + Crystal Butterfly Deluxe<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
+  <div className="notice"><WandSparkles size={17}/><span>Prototype 08.4 · Premium Wing Asset + Body Segmentation<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
  </section>
  <section className="mirror-wrap"><div className="mirror-ornament">✦ <span>THE MAGIC IS WITHIN YOU</span> ✦</div><div className="mirror-frame"><div className="mirror-inner">
   <video ref={videoRef} playsInline autoPlay muted className="hidden-video"/><canvas ref={canvasRef} width={720} height={1280} className="mirror-canvas" style={{display:phase==='play'?'block':'none'}}/>
   {phase==='welcome'&&<div className="idle-scene"><div className="portal-ring"><div className="portal-core"><span>✧</span></div></div><div className="scene-copy"><span className="mini-label">ENCHANTED FOREST</span><h2>AWAKEN<br/>YOUR MAGIC</h2><p>กระจกกำลังรอพลังวิเศษของคุณ</p></div></div>}
   {phase==='loading'&&<div className="loading-scene"><div className="loader-sun">✺</div><h2>OPENING THE PORTAL</h2><p>กำลังเตรียมกล้องและโมเดล AI...</p></div>}
   {phase==='capture'&&snapshot&&<img src={snapshot} alt="ภาพเวทมนตร์ที่ถ่ายจากกระจก" className="capture-image"/>}
-  {phase==='play'&&<div className="play-overlay"><div className="spell-heading"><span className="mini-label">SPELLS 01 + 02 + 03</span><h2>TRUE HAND MAGIC</h2></div><div className="spell-instruction"><div className="spell-status">{status}</div><div className="progress-track"><div style={{width:`${progress}%`}}/></div><small>✨ ลูกแก้ว {spellCount} ครั้ง · 🦋 ปีก {wingCount} ครั้ง</small>{handMode&&<div style={{fontSize:12,marginTop:6,color:'#f3d6a4'}}>✋ {handStatus} · พลัง {chargePercent}%</div>}<div className="wing-progress"><span>WINGS OF LIGHT</span><div className="progress-track"><div style={{width:`${wingProgress}%`}}/></div></div></div></div>}
+  {phase==='play'&&<div className="play-overlay"><div className="spell-heading"><span className="mini-label">SPELLS 01 + 02 + 03</span><h2>TRUE HAND MAGIC</h2></div><div className="spell-instruction"><div className="spell-status">{status}</div><div className="progress-track"><div style={{width:`${progress}%`}}/></div><small>✨ ลูกแก้ว {spellCount} ครั้ง · 🦋 ปีก {wingCount} ครั้ง</small>{handMode&&<div style={{fontSize:12,marginTop:6,color:'#f3d6a4'}}>✋ {handStatus} · พลัง {chargePercent}%</div>}{wingAssetStatus==='missing'&&<div style={{fontSize:12,color:'#ffd1d1'}}>ไม่พบ PNG ปีก ตรวจสอบ /public/assets/wings</div>}{segStatus==='fallback'&&<div style={{fontSize:11,color:'#ead8b0'}}>Segmentation ไม่พร้อม — ใช้การบังลำตัวแบบสำรอง</div>}<div className="wing-progress"><span>WINGS OF LIGHT</span><div className="progress-track"><div style={{width:`${wingProgress}%`}}/></div></div></div></div>}
   {phase==='play'&&countdown!==null&&<div role="status" aria-live="polite" style={{position:'absolute',left:'50%',top:'46%',transform:'translate(-50%,-50%)',pointerEvents:'none',zIndex:9,textAlign:'center',width:'85%',textShadow:'0 3px 20px #13082e'}}><div style={{color:'#ffe5a7',letterSpacing:'.09em',fontSize:'clamp(11px,1.2vw,16px)',fontWeight:700}}>{photoCue}</div><div style={{fontSize:'clamp(100px,15vw,180px)',fontFamily:'Georgia,serif',color:'#fff4cc',fontWeight:700,lineHeight:1.1,filter:'drop-shadow(0 0 24px #d19cff)'}}>{countdown}</div><div style={{color:'#f5dcfa',fontSize:'clamp(12px,1.3vw,18px)'}}>ระบบจะถ่ายให้อัตโนมัติ ✦</div></div>}
   {phase==='capture'&&<div className="capture-label"><Sparkles size={16}/> YOUR MAGICAL MOMENT</div>}
  </div></div><div className="mirror-footer"><span>✦ ENCHANTED REALM ✦</span><div className="mirror-actions">
@@ -471,5 +413,5 @@ export default function MagicMirror(){
   {phase==='play'&&<><button className="icon-action" onClick={()=>setMuted(v=>!v)} title={muted?'เปิดเสียง':'ปิดเสียง'}>{muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><button className="primary-action" onClick={capture}><Camera size={18}/> ถ่ายเอง</button><button className="icon-action" onClick={reset} title="เริ่มใหม่"><RefreshCcw size={18}/></button></>}
   {phase==='capture'&&<><button className="primary-action" onClick={sharePhoto}><Download size={18}/> แชร์ / บันทึกบนมือถือ</button><button className="secondary-action" onClick={savePhoto}>ดาวน์โหลด PNG</button><button className="secondary-action" onClick={openPhoto}>วิธีบันทึกรูป</button><button className="secondary-action" onClick={start}><RefreshCcw size={16}/> เล่นอีกครั้ง</button></>}
  </div>{error&&<p className="error-text"><CameraOff size={16}/>{error}<br/>ตรวจสอบสิทธิ์กล้อง อินเทอร์เน็ต แล้วลองใหม่</p>}</div></section>
- <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08.2</footer></main>
+ <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08.4</footer></main>
 }
