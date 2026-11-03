@@ -117,7 +117,7 @@ export default function MagicMirror(){
  // Auto capture is driven by the video render clock, NOT by a timeout that may fire
  // before the latest wings and hand particles have been painted on the Canvas.
  const autoPhotoRef=useRef(null),captureFrameRef=useRef(null),wingLockUntilRef=useRef(0),lastPoseSeenRef=useRef(0);
- const [countdown,setCountdown]=useState(null),[photoCue,setPhotoCue]=useState(''),[captureKind,setCaptureKind]=useState(null);
+ const [countdown,setCountdown]=useState(null),[photoCue,setPhotoCue]=useState('');
  const wingLandmarksRef=useRef(null);
  const handMagicRef=useRef(null),handMagicLastRef=useRef(null),handMagicFrameRef=useRef(0),handBurstRef=useRef(0);
  const wingsRef=useRef({x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0}),wingHoldRef=useRef(null),lastWingTriggerRef=useRef(0),wingShownRef=useRef(false);
@@ -132,19 +132,7 @@ export default function MagicMirror(){
   const canvas=canvasRef.current,video=videoRef.current,model=landmarkerRef.current;if(!canvas||!video||!model||phaseRef.current!=='play')return;
   const ctx=canvas.getContext('2d');if(!ctx)return;const w=canvas.width,h=canvas.height;
   const beginAutoPhoto=(kind)=>{
-   if(phaseRef.current!=='play')return;
-   // Avoid capturing a hand-orb frame before the user gets a chance to summon wings.
-   // Wing pose takes precedence over any existing hand-spell countdown.
-   if(kind==='wings' && !premiumWingsRef.current){
-     setStatus('ไม่พบ PNG ปีก: ตรวจสอบว่าไฟล์ทั้ง 4 อยู่บน Vercel แล้ว');
-     setError('ปีกยังโหลดไม่สำเร็จ — ต้องอัปโหลด public/assets/wings/*.png ขึ้น GitHub และ Deploy ก่อน');
-     return;
-   }
-   if(autoPhotoRef.current){
-     if(kind!=='wings' || autoPhotoRef.current.kind==='wings')return;
-     autoPhotoRef.current=null; // restart countdown for visible wings
-   }
-   setCaptureKind(kind);
+   if(autoPhotoRef.current || phaseRef.current!=='play')return;
    autoPhotoRef.current={kind,startedAt:timestamp,shootAt:timestamp+3000};
    setPhotoCue(kind==='wings'?'ปีกคริสตัลพร้อมแล้ว! โพสท่าเลย':kind==='burst'?'ปล่อยพลังสำเร็จ! เตรียมถ่าย':'ลูกแก้วพร้อมแล้ว! ยิ้มได้เลย');
    setCountdown(3);
@@ -234,7 +222,7 @@ export default function MagicMirror(){
             handRef.current=previous?{x:previous.x+(info.canvasPalm.x-previous.x)*.34,y:previous.y+(info.canvasPalm.y-previous.y)*.34}:info.canvasPalm;
           }else if(!autoPhotoRef.current){handRef.current=null;}
           for(const event of info.events){
-            if(event==='ORB_APPEAR'){setSpellCount(n=>n+1);playChime();/* Keep the orb interactive; no premature photo before wings. */}
+            if(event==='ORB_APPEAR'){setSpellCount(n=>n+1);playChime();beginAutoPhoto('orb');}
             if(event==='BURST'){
               beginAutoPhoto('burst');
               handBurstRef.current=timestamp;effectTimeRef.current=timestamp;activeRef.current=true;
@@ -313,12 +301,6 @@ export default function MagicMirror(){
         const seconds=Math.max(1,Math.ceil((pending.shootAt-timestamp)/1000));
         if(seconds!==pending.lastSecond){pending.lastSecond=seconds;setCountdown(seconds);}
         if(timestamp>=pending.shootAt){
-          // Do not save a wing photo if its asset never loaded or the effect faded.
-          if(pending.kind==='wings' && (!premiumWingsRef.current || wings.opacity<.45)){
-            autoPhotoRef.current=null;setCountdown(null);setPhotoCue('');
-            setStatus('ปีกไม่พร้อมสำหรับถ่ายภาพ กรุณาลองกางแขนใหม่');
-            return;
-          }
           autoPhotoRef.current=null;
           setCountdown(null);setPhotoCue('');
           // Capture must run from this animation frame after drawing the latest effects.
@@ -330,7 +312,7 @@ export default function MagicMirror(){
    }
   rafRef.current=requestAnimationFrame(draw);
  },[playChime]);
- const start=async()=>{let stage='เริ่มต้น';stop();setError(null);setStatus('กำลังเปิดประตูเวทมนตร์...');setPhase('loading');setProgress(0);setSpellCount(0);setWingCount(0);setWingProgress(0);setSnapshot(null);setCountdown(null);setPhotoCue('');setCaptureKind(null);setWingAssetStatus('pending');setSegStatus('pending');setHandMode(false);setHandStatus('กำลังเปิดระบบติดตามมือ...');setChargePercent(0);try{
+ const start=async()=>{let stage='เริ่มต้น';stop();setError(null);setStatus('กำลังเปิดประตูเวทมนตร์...');setPhase('loading');setProgress(0);setSpellCount(0);setWingCount(0);setWingProgress(0);setSnapshot(null);setCountdown(null);setPhotoCue('');setWingAssetStatus('pending');setSegStatus('pending');setHandMode(false);setHandStatus('กำลังเปิดระบบติดตามมือ...');setChargePercent(0);try{
    if(!navigator.mediaDevices?.getUserMedia)throw new Error('เบราว์เซอร์นี้ไม่รองรับกล้อง หรือไม่ได้ใช้ HTTPS/localhost');
    stage='ขอสิทธิ์กล้อง';setStatus('กำลังขอสิทธิ์กล้อง...');
    const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'}});streamRef.current=stream;
@@ -415,21 +397,21 @@ export default function MagicMirror(){
   <span className="eyebrow"><Sparkles size={16}/> AN INTERACTIVE FANTASY EXPERIENCE</span><h1>THE<br/><em>ENCHANTED</em><br/>MIRROR<span className="star-dot">✧</span></h1>
   <div className="gold-rule"/><p className="lead">ก้าวเข้าสู่โลกเวทมนตร์ที่มีชีวิต<br/>เพียงยกมือ… แล้วปล่อยให้แสงมหัศจรรย์ติดตามคุณ</p>
   <div className="instructions"><div><span>01</span><p>อนุญาตการใช้งานกล้อง</p></div><div><span>02</span><p>ยืนให้เห็นช่วงบนและยกมือเหนือไหล่</p></div><div><span>03</span><p>กางแขนค้าง 1 วินาทีเพื่อเรียกปีกเวทมนตร์</p></div></div>
-  <div className="notice"><WandSparkles size={17}/><span>Prototype 08.4 · Premium Wing Asset + Body Segmentation<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
+  <div className="notice"><WandSparkles size={17}/><span>Prototype 08.5 · Premium Wing Asset + Body Segmentation<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
  </section>
  <section className="mirror-wrap"><div className="mirror-ornament">✦ <span>THE MAGIC IS WITHIN YOU</span> ✦</div><div className="mirror-frame"><div className="mirror-inner">
   <video ref={videoRef} playsInline autoPlay muted className="hidden-video"/><canvas ref={canvasRef} width={720} height={1280} className="mirror-canvas" style={{display:phase==='play'?'block':'none'}}/>
   {phase==='welcome'&&<div className="idle-scene"><div className="portal-ring"><div className="portal-core"><span>✧</span></div></div><div className="scene-copy"><span className="mini-label">ENCHANTED FOREST</span><h2>AWAKEN<br/>YOUR MAGIC</h2><p>กระจกกำลังรอพลังวิเศษของคุณ</p></div></div>}
   {phase==='loading'&&<div className="loading-scene"><div className="loader-sun">✺</div><h2>OPENING THE PORTAL</h2><p>กำลังเตรียมกล้องและโมเดล AI...</p></div>}
   {phase==='capture'&&snapshot&&<img src={snapshot} alt="ภาพเวทมนตร์ที่ถ่ายจากกระจก" className="capture-image"/>}
-  {phase==='play'&&<div className="play-overlay"><div className="spell-heading"><span className="mini-label">SPELLS 01 + 02 + 03</span><h2>TRUE HAND MAGIC</h2></div><div className="spell-instruction"><div className="spell-status">{status}</div><div className="progress-track"><div style={{width:`${progress}%`}}/></div><small>✨ ลูกแก้ว {spellCount} ครั้ง · 🦋 ปีก {wingCount} ครั้ง</small>{handMode&&<div style={{fontSize:12,marginTop:6,color:'#f3d6a4'}}>✋ {handStatus} · พลัง {chargePercent}%</div>}{wingAssetStatus==='missing'&&<div style={{fontSize:12,color:'#ffd1d1'}}>ไม่พบไฟล์ PNG ปีกบนเว็บที่เปิดอยู่ — ตรวจสอบการ Deploy ภาพทั้ง 4 ไฟล์</div>}{segStatus==='fallback'&&<div style={{fontSize:11,color:'#ead8b0'}}>Segmentation ไม่พร้อม — ใช้การบังลำตัวแบบสำรอง</div>}<div className="wing-progress"><span>WINGS OF LIGHT</span><div className="progress-track"><div style={{width:`${wingProgress}%`}}/></div></div></div></div>}
+  {phase==='play'&&<div className="play-overlay"><div className="spell-heading"><span className="mini-label">SPELLS 01 + 02 + 03</span><h2>TRUE HAND MAGIC</h2></div><div className="spell-instruction"><div className="spell-status">{status}</div><div className="progress-track"><div style={{width:`${progress}%`}}/></div><small>✨ ลูกแก้ว {spellCount} ครั้ง · 🦋 ปีก {wingCount} ครั้ง</small>{handMode&&<div style={{fontSize:12,marginTop:6,color:'#f3d6a4'}}>✋ {handStatus} · พลัง {chargePercent}%</div>}{wingAssetStatus==='missing'&&<div style={{fontSize:12,color:'#ffd1d1'}}>ไม่พบ PNG ปีก ตรวจสอบ /public/assets/wings</div>}{segStatus==='fallback'&&<div style={{fontSize:11,color:'#ead8b0'}}>Segmentation ไม่พร้อม — ใช้การบังลำตัวแบบสำรอง</div>}<div className="wing-progress"><span>WINGS OF LIGHT</span><div className="progress-track"><div style={{width:`${wingProgress}%`}}/></div></div></div></div>}
   {phase==='play'&&countdown!==null&&<div role="status" aria-live="polite" style={{position:'absolute',left:'50%',top:'46%',transform:'translate(-50%,-50%)',pointerEvents:'none',zIndex:9,textAlign:'center',width:'85%',textShadow:'0 3px 20px #13082e'}}><div style={{color:'#ffe5a7',letterSpacing:'.09em',fontSize:'clamp(11px,1.2vw,16px)',fontWeight:700}}>{photoCue}</div><div style={{fontSize:'clamp(100px,15vw,180px)',fontFamily:'Georgia,serif',color:'#fff4cc',fontWeight:700,lineHeight:1.1,filter:'drop-shadow(0 0 24px #d19cff)'}}>{countdown}</div><div style={{color:'#f5dcfa',fontSize:'clamp(12px,1.3vw,18px)'}}>ระบบจะถ่ายให้อัตโนมัติ ✦</div></div>}
-  {phase==='capture'&&<div className="capture-label"><Sparkles size={16}/> {captureKind==='wings'?'CRYSTAL WINGS MOMENT':captureKind==='burst'?'MAGIC BURST MOMENT':'YOUR MAGICAL MOMENT'}</div>}
+  {phase==='capture'&&<div className="capture-label"><Sparkles size={16}/> YOUR MAGICAL MOMENT</div>}
  </div></div><div className="mirror-footer"><span>✦ ENCHANTED REALM ✦</span><div className="mirror-actions">
   {phase==='welcome'&&<button className="primary-action" onClick={start}><Camera size={18}/> เข้าสู่โลกเวทมนตร์</button>}
   {phase==='loading'&&<button className="primary-action" disabled>กำลังเตรียมระบบ...</button>}
   {phase==='play'&&<><button className="icon-action" onClick={()=>setMuted(v=>!v)} title={muted?'เปิดเสียง':'ปิดเสียง'}>{muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><button className="primary-action" onClick={capture}><Camera size={18}/> ถ่ายเอง</button><button className="icon-action" onClick={reset} title="เริ่มใหม่"><RefreshCcw size={18}/></button></>}
   {phase==='capture'&&<><button className="primary-action" onClick={sharePhoto}><Download size={18}/> แชร์ / บันทึกบนมือถือ</button><button className="secondary-action" onClick={savePhoto}>ดาวน์โหลด PNG</button><button className="secondary-action" onClick={openPhoto}>วิธีบันทึกรูป</button><button className="secondary-action" onClick={start}><RefreshCcw size={16}/> เล่นอีกครั้ง</button></>}
  </div>{error&&<p className="error-text"><CameraOff size={16}/>{error}<br/>ตรวจสอบสิทธิ์กล้อง อินเทอร์เน็ต แล้วลองใหม่</p>}</div></section>
- <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08.4</footer></main>
+ <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08.5</footer></main>
 }

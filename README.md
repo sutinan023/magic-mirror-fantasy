@@ -1,38 +1,47 @@
-# Magic Mirror V08.5 — Wing Photo Diagnostic Fix
+# Magic Mirror V08.5 — Back-Rooted Crystal Wings
 
-Based on V08.4 Premium Wings + Body Segmentation, not on earlier Canvas wing versions.
+Base: V08.4 Premium Wings + Body Segmentation.
 
-## Fixed
-- `ORB_APPEAR` no longer triggers automatic photography before wings have time to appear.
-- Wing activation can override an already active spell countdown; restarts the 3-second timer for wings.
-- If PNG assets are unavailable, the app explains that the four files must be committed and deployed.
-- Wing countdown refuses to save a frame if the assets are missing or the wing effect opacity is too low.
-- Capture label distinguishes `CRYSTAL WINGS MOMENT` from `MAGIC BURST MOMENT`.
-- Manual capture remains available.
+## Updated files
+- `lib/premiumWings.js` — main change: move roots toward the spine, lower toward shoulder blades; outward tilt; preserve alpha and portrait bounds.
+- `components/MagicMirror.jsx` — version label only.
+- `lib/bodySegmentation.js` — unchanged from V08.4.
+- `lib/trueHandMagic.js` — unchanged from V08.4.
 
-## Very important: V08.4 ZIP did not include your PNG assets
-Copy these from your existing project into the Vercel-bound repository:
+## Installation (existing project only)
+Copy `lib/premiumWings.js` to `C:\\xampp\\htdocs\\magic-mirror-fantasy-js\\lib\\premiumWings.js`.
+Optionally copy `components/MagicMirror.jsx` to update displayed version number.
+**No CSS, routing, package.json, Hand Magic, Auto Capture, or photo-save changes.**
 
-```
-public/assets/wings/wing-left-base.png
-public/assets/wings/wing-right-base.png
-public/assets/wings/wing-left-glow.png
-public/assets/wings/wing-right-glow.png
-```
+The 4 existing transparent PNG images must remain:
+- `public/assets/wings/wing-left-base.png`
+- `public/assets/wings/wing-right-base.png`
+- `public/assets/wings/wing-left-glow.png`
+- `public/assets/wings/wing-right-glow.png`
 
-Check these paths from the exact iPad website: `https://YOUR-APP.vercel.app/assets/wings/wing-left-base.png` (and the other three). An image must open, NOT a 404.
+## Main difference
+Previously roots sat at x = ±45% of shoulder width (the shoulder edge), slightly above the shoulder line.
+Now roots are x = ±23.5% of shoulder width (upper back region projected into camera), y = +14.5% of shoulder width (below the shoulder line).
+The person segmentation is drawn **over the wing images** to conceal their internal roots; the visible wing portions emerge from behind the torso.
 
-## Replace files
-- `components/MagicMirror.jsx`
-- `lib/premiumWings.js`
+This is a 2D visual illusion. A front-facing camera cannot directly measure the real scapula behind the body, so the position is an estimate.
 
-Keep `lib/bodySegmentation.js`, `lib/trueHandMagic.js`, your CSS, and all other UI unchanged. Port stays **3107**.
+## Adjustable parameters
+In `WING_CONFIG`:
+- `backRootSpread` (default 0.235): 0.20 moves roots closer to spine; 0.29 moves them apart
+- `backRootDrop` (default 0.145): 0.10 moves roots higher; 0.20 lower
+- `outwardTilt` (default 0.075): changes outward angle subtly
+- `scale`, `heightScale`: size before portrait containment
+- `glowOpacity`: glow strength
 
-## Test
-1. Commit/deploy all four PNG assets along with the new code.
-2. Reload iPad browser fully (close PWA/reopen if necessary).
-3. Open wings and hold arms extended for one second. Wait for three-second countdown; preview should say **CRYSTAL WINGS MOMENT**.
-4. Test hand magic separately; `ORB_APPEAR` will not auto-shoot, while a `BURST` does.
-5. Verify segmentation doesn't cover wings: disable it temporarily only if a debugging step is needed.
+## Testing
+1. `npm run build` then `npm run dev`, app on port **3107** (unchanged)
+2. Face the camera, activate wings, lower arms and turn shoulders slightly
+3. Confirm wing roots disappear behind torso instead of sitting on shoulder outline
+4. Confirm both wings remain present in 3-second auto-captured photo
+5. Test on iPad/iPhone HTTPS. If segmentation fails, legacy torso approximate mask remains a fallback.
 
-Verified: source syntax/structure only; camera, Vercel asset availability and iPad have not been tested in this environment.
+### Limitations
+- Image asset roots must match source PNG padding. The PNGs were not provided; these normalized positions use the working V08.4 calibration.
+- True 3D depth / shoulder rotation would require additional estimation.
+- Syntax and renderer geometry checks performed; browser/camera tests still required.
