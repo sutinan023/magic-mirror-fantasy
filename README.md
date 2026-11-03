@@ -1,29 +1,24 @@
-# Magic Mirror V08 — True Hand Magic
+# Magic Mirror V08.1 — Crystal Butterfly Deluxe
 
-Integration against the user-provided latest `MagicMirror.jsx`.
+Patch to the **V08 Integrated** release. This package contains only two code files:
+- `components/MagicMirror.jsx` — replace the old component entirely.
+- `lib/trueHandMagic.js` — same V08 engine, preserve/copy as needed.
 
-## Replace exactly two files in your existing Next.js project
+**Unchanged:** Hand gestures, hand model, photo capture, mobile Share, all JSX layout/CSS, WASM install, and local Next.js port **3107**.
 
-- `components/MagicMirror.jsx` — replace your existing file
-- `lib/trueHandMagic.js` — new file; create `lib` if missing
+## Wing redesign
+- Four pointed stained-glass butterfly lobes (two per side) instead of four rounded petals.
+- Gold structural spine, cyan/violet/pink crystal facets, sparkly trim.
+- Two independent shoulder-blade attachment points rather than single chest origin.
+- Wing path stays behind/outside the torso; approximate **Pose-based torso occlusion** masks overlapping wing portions. This is not full Image Segmentation; crossing arms and rotating sideways may still expose inaccuracies.
+- Subtle wing motion; existing arms-open 1-second gesture remains intact.
 
-Do NOT replace CSS, package.json, or WASM assets. Your current V07.2 system, mobile share, curved mirror UI, and port 3107 remain intact. The current project must already use `@mediapipe/tasks-vision` (existing V07 dependency).
+## Install and test
+1. Backup or Git commit working V08 first.
+2. Replace `components/MagicMirror.jsx` and keep/add `lib/trueHandMagic.js`.
+3. Run `npm run build`, then `npm run dev` (port 3107).
+4. Open with full shoulders and torso visible. Extend both arms level with shoulders for ~1s.
+5. Verify four crystal lobes emerge from shoulder blades, not sternum. Confirm normal hand spell and mobile image Save still work.
+6. Test with sideways pose and crossed arms; true pixel-perfect body occlusion is deferred to a segmentation-based release.
 
-## Gestures
-- Open palm steadily for ~300ms: summon orb
-- Hold a fist for 300ms: begin charging
-- After at least 1100ms charging, open palm again: burst
-- Stretch both arms sideways: the existing wings gesture still works
-
-If the Hand Landmarker fails to load, pose-based Awaken works as a fallback. The Hand model is fetched from Google Storage. Hand and Pose both use your local `/mediapipe/wasm` files. Hand inference is throttled to about 15fps.
-
-## Commands
-
-```bash
-npm run build
-npm run dev
-```
-
-Local port remains 3107 from your existing package.json. For Vercel, commit and push both files to your linked GitHub repository after local verification.
-
-**Known constraints**: single hand, approximation based on 2D finger landmarks, occlusion and mobile performance; must be tested on real camera.
+**Validation:** JSX syntax parsing is performed, but real-camera and production build remain to be validated locally in the user's Next.js project. No Vercel deployment is performed by this package.

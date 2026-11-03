@@ -4,39 +4,127 @@ import { Camera, CameraOff, Download, RefreshCcw, Sparkles, WandSparkles, Volume
 import { createHandMagic } from '../lib/trueHandMagic';
 
 const WASM='/mediapipe/wasm';
-// Wings use shoulder and wrist landmarks. The translucent wings sit at the sides of
-// the silhouette; full body occlusion will be added with segmentation in a later phase.
-function drawWings(ctx,centerX,centerY,span,angle,alpha,timestamp){
- const flap=Math.sin(timestamp/360)*.085;
- ctx.save();ctx.translate(centerX,centerY);ctx.rotate(angle);
- ctx.globalCompositeOperation='screen';
- for(const side of [-1,1]){
-  ctx.save();ctx.scale(side,1);
-  const reach=span*(1.2+flap),rise=span*.83,fall=span*1.02;
-  const g=ctx.createLinearGradient(0,-rise,reach,fall);
-  g.addColorStop(0,`rgba(255,236,190,${.32*alpha})`);
-  g.addColorStop(.55,`rgba(184,130,255,${.24*alpha})`);
-  g.addColorStop(1,'rgba(88,204,246,0)');
-  ctx.fillStyle=g;ctx.strokeStyle=`rgba(255,220,164,${.65*alpha})`;ctx.lineWidth=2.5;
-  ctx.beginPath();ctx.moveTo(0,0);ctx.bezierCurveTo(reach*.45,-rise*.9,reach,-rise*1.12,reach,-rise*.22);
-  ctx.bezierCurveTo(reach*1.05,rise*.15,reach*.52,rise*.28,0,span*.15);
-  ctx.closePath();ctx.fill();ctx.stroke();
-  ctx.beginPath();ctx.moveTo(0,span*.1);ctx.bezierCurveTo(reach*.95,span*.02,reach*.88,fall*.95,reach*.45,fall);
-  ctx.bezierCurveTo(reach*.2,fall*1.05,reach*.1,span*.62,0,span*.16);
-  ctx.closePath();ctx.fill();ctx.stroke();
-  ctx.strokeStyle=`rgba(255,222,163,${.65*alpha})`;ctx.lineWidth=1.15;
-  for(let i=1;i<=3;i++){ctx.beginPath();ctx.moveTo(0,0);ctx.quadraticCurveTo(reach*(.26+i*.12),-rise*.27,reach*(.42+i*.16),-rise*(.95-i*.17));ctx.stroke();}
-  // Prism filaments: thin crystalline veins rather than cartoon wing blobs.
-  for(let i=0;i<6;i++){
-    const y0=-rise*(.05+i*.10),x1=reach*(.38+i*.10),y1=-rise*(.90-i*.13);
-    ctx.beginPath();ctx.moveTo(0,span*.03);
-    ctx.quadraticCurveTo(reach*.40,y0,x1,y1);
-    ctx.strokeStyle=`rgba(${i%2?'134,220,245':'236,170,255'},${.30*alpha})`;
-    ctx.lineWidth=.95;ctx.stroke();
+// V08.1 — Crystal Butterfly Deluxe. Four pointed translucent crystal panels.
+// The design is anchored at each shoulder blade, not at the center of the chest.
+function drawCrystalWings(ctx, cx, cy, shoulderSpan, angle, alpha, now) {
+  const pulse = 1 + Math.sin(now / 610) * .018;
+  const flap = Math.sin(now / 820) * .035;
+  const size = Math.max(85, shoulderSpan) * pulse;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  for (const side of [-1, 1]) {
+    ctx.save();
+    ctx.scale(side, 1);
+    // Two separate wing roots. Nothing starts from the sternum.
+    ctx.translate(size * .43, -size * .045);
+    ctx.rotate(-flap);
+    const S = size;
+    const upper = new Path2D();
+    upper.moveTo(0, 0);
+    upper.bezierCurveTo(S*.29,-S*.53,S*.95,-S*1.0,S*1.72,-S*1.83);
+    upper.bezierCurveTo(S*1.96,-S*1.48,S*1.91,-S*.92,S*1.54,-S*.60);
+    upper.bezierCurveTo(S*1.19,-S*.36,S*.84,-S*.30,S*.68,-S*.27);
+    upper.bezierCurveTo(S*.36,-S*.19,S*.17,-S*.02,0,0);
+    upper.closePath();
+    const lower = new Path2D();
+    lower.moveTo(0, S*.075);
+    lower.bezierCurveTo(S*.44,-S*.06,S*1.15,-S*.19,S*1.63,-S*.30);
+    lower.bezierCurveTo(S*1.56,S*.30,S*1.23,S*.83,S*.92,S*1.30);
+    lower.bezierCurveTo(S*.68,S*1.02,S*.40,S*.63,S*.23,S*.37);
+    lower.bezierCurveTo(S*.12,S*.20,S*.08,S*.12,0,S*.075);
+    lower.closePath();
+    const segments=[{path:upper,upper:true},{path:lower,upper:false}];
+    for (const segment of segments) {
+      ctx.save();
+      // No screen blend here: translucent stained-glass layers retain their color.
+      const grad = ctx.createLinearGradient(0,S*.48,S*1.83,-S*1.3);
+      grad.addColorStop(0,`rgba(246,171,255,${.47*alpha})`);
+      grad.addColorStop(.32,`rgba(145,88,245,${.44*alpha})`);
+      grad.addColorStop(.64,`rgba(48,215,235,${.40*alpha})`);
+      grad.addColorStop(1,`rgba(213,153,255,${.44*alpha})`);
+      ctx.fillStyle=grad;ctx.fill(segment.path);
+      // Clip the crystal facets to the actual wing silhouette.
+      ctx.clip(segment.path);
+      const N=segment.upper?11:8;
+      for(let i=0;i<N;i++){
+        const t=i/(N-1), x=(.19+t*1.45)*S;
+        const by=segment.upper ? (-.08-t*.50)*S : (.08+t*.12)*S;
+        const tipY=segment.upper ? (-.28-t*1.12)*S : (.26+t*.95)*S;
+        const facets=ctx.createLinearGradient(x,tipY,x+S*.13,by);
+        facets.addColorStop(0,`rgba(${i%3===0?'105,245,255':'207,129,255'},${.22*alpha})`);
+        facets.addColorStop(1,'rgba(255,206,246,0)');
+        ctx.fillStyle=facets;
+        ctx.beginPath();
+        ctx.moveTo(S*.015,S*.02);
+        ctx.lineTo(x,tipY);
+        ctx.lineTo(x+S*.19,tipY+S*.18);
+        ctx.closePath();ctx.fill();
+        ctx.beginPath();ctx.moveTo(S*.02,S*.02);
+        ctx.lineTo(x,tipY);
+        ctx.strokeStyle=`rgba(255,219,174,${(.25+.22*t)*alpha})`;
+        ctx.lineWidth=Math.max(.7,S*.005);ctx.stroke();
+      }
+      // Crystalline branching lines add structure without petal shapes.
+      for(let i=0;i<7;i++){
+        const t=(i+1)/8;
+        const y=segment.upper?(-.17-1.4*t)*S:(.13+1.05*t)*S;
+        ctx.beginPath();ctx.moveTo(S*.05,0);
+        ctx.quadraticCurveTo(S*(.46+.19*t),y*.56,S*(.54+1.13*t),y);
+        ctx.strokeStyle=`rgba(${i%2?'146,240,255':'255,217,156'},${.54*alpha})`;
+        ctx.lineWidth=Math.max(1,S*.007);ctx.stroke();
+      }
+      ctx.restore();
+      // Metallic-gold contours with a controlled outer glow.
+      ctx.save();ctx.shadowColor='#eec79e';ctx.shadowBlur=14*alpha;
+      ctx.strokeStyle=`rgba(255,218,151,${.91*alpha})`;
+      ctx.lineWidth=Math.max(1.4,S*.010);
+      ctx.stroke(segment.path);ctx.restore();
+    }
+    // Spine, prismatic sparkle points and hanging jewel detail.
+    ctx.beginPath();ctx.moveTo(0,0);
+    ctx.bezierCurveTo(S*.30,-S*.28,S*1.02,-S*.77,S*1.72,-S*1.83);
+    ctx.strokeStyle=`rgba(255,231,189,${.88*alpha})`;
+    ctx.lineWidth=Math.max(1.2,S*.009);ctx.stroke();
+    for(let i=0;i<12;i++){
+      const t=i/11;
+      const x=S*(.21+t*1.52),y=-S*(.16+t*1.52);
+      const twinkle=(.6+.4*Math.sin(now/480+i*2.6));
+      ctx.save();ctx.translate(x,y);
+      ctx.fillStyle=`rgba(255,235,189,${twinkle*.79*alpha})`;
+      ctx.beginPath();ctx.moveTo(0,-3.5);ctx.lineTo(1.5,0);ctx.lineTo(0,3.5);ctx.lineTo(-1.5,0);ctx.closePath();ctx.fill();ctx.restore();
+    }
+    ctx.restore();
   }
   ctx.restore();
- }
- ctx.restore();
+}
+
+// Clip only the approximate torso/head area of the person. This is deliberately
+// lighter than AI segmentation and prevents wing contours from covering the chest.
+// The mask is approximate for sideways poses; real occlusion requires segmentation.
+function clipWingsOutsideBody(ctx, landmarks, width, dw, dh, ox, oy) {
+  if (!landmarks) return;
+  const valid=p=>p && Number.isFinite(p.x) && Number.isFinite(p.y) && (p.visibility??1)>.35;
+  const L=landmarks[11],R=landmarks[12],LH=landmarks[23],RH=landmarks[24];
+  if (![L,R,LH,RH].every(valid)) return;
+  const pt=p=>({x:width-(ox+p.x*dw),y:oy+p.y*dh});
+  const a=pt(L),b=pt(R),c=pt(LH),d=pt(RH);
+  const shoulderWidth=Math.hypot(a.x-b.x,a.y-b.y);
+  const centerX=(a.x+b.x)/2, shoulderY=(a.y+b.y)/2;
+  const nose=valid(landmarks[0])?pt(landmarks[0]):null;
+  const headY=nose?nose.y-shoulderWidth*.42:shoulderY-shoulderWidth*1.05;
+  const hipY=Math.max(c.y,d.y);
+  ctx.beginPath();ctx.rect(0,0,ctx.canvas.width,ctx.canvas.height);
+  // Torso mask, padded just enough to protect chest and neck.
+  const pad=shoulderWidth*.085;
+  const left=Math.min(a.x,b.x)-pad, right=Math.max(a.x,b.x)+pad;
+  ctx.moveTo(left,shoulderY-shoulderWidth*.12);
+  ctx.lineTo(right,shoulderY-shoulderWidth*.12);
+  ctx.lineTo(Math.max(c.x,d.x)+pad,hipY+shoulderWidth*.22);
+  ctx.lineTo(Math.min(c.x,d.x)-pad,hipY+shoulderWidth*.22);
+  ctx.closePath();
+  // Wing geometry stays outside the head; exclude the torso with an even-odd hole.
+  ctx.clip('evenodd');
 }
 
 // Pose Landmarker also provides thumb/index/pinky landmarks (22/20/18 on the
@@ -117,12 +205,13 @@ const MODEL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pos
 
 export default function MagicMirror(){
  const videoRef=useRef(null),canvasRef=useRef(null), landmarkerRef=useRef(null),streamRef=useRef(null),rafRef=useRef(0);
+ const wingLandmarksRef=useRef(null);
  const handMagicRef=useRef(null),handMagicLastRef=useRef(null),handMagicFrameRef=useRef(0),handBurstRef=useRef(0);
  const wingsRef=useRef({x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0}),wingHoldRef=useRef(null),lastWingTriggerRef=useRef(0),wingShownRef=useRef(false);
  const progressRef=useRef(0),sparksRef=useRef([]),lastSeenRef=useRef(-1),handRef=useRef(null),holdStartRef=useRef(null),lastFrameRef=useRef(0),lastTriggerRef=useRef(0),activeRef=useRef(false),effectTimeRef=useRef(0),phaseRef=useRef('welcome');
  const [phase,setPhase]=useState('welcome'),[status,setStatus]=useState('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม'),[progress,setProgress]=useState(0),[spellCount,setSpellCount]=useState(0),[wingCount,setWingCount]=useState(0),[wingProgress,setWingProgress]=useState(0),[snapshot,setSnapshot]=useState(null),[muted,setMuted]=useState(true),[error,setError]=useState(null),[handStatus,setHandStatus]=useState('เริ่มระบบเวทมือ'),[handMode,setHandMode]=useState(false),[chargePercent,setChargePercent]=useState(0);
  useEffect(()=>{phaseRef.current=phase},[phase]);
- const stop=useCallback(()=>{cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;handMagicRef.current?.close();handMagicRef.current=null;handMagicLastRef.current=null;handMagicFrameRef.current=0;handBurstRef.current=0;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
+ const stop=useCallback(()=>{cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;handMagicRef.current?.close();handMagicRef.current=null;handMagicLastRef.current=null;handMagicFrameRef.current=0;handBurstRef.current=0;wingLandmarksRef.current=null;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
  useEffect(()=>()=>{stop()},[stop]);
  const playChime=useCallback(()=>{if(muted)return;try{const ctx=new AudioContext();const t=ctx.currentTime;[523.25,659.25,783.99].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t+i*.1);g.gain.exponentialRampToValueAtTime(.065,t+i*.1+.02);g.gain.exponentialRampToValueAtTime(.0001,t+i*.1+.5);o.connect(g).connect(ctx.destination);o.start(t+i*.1);o.stop(t+i*.1+.52)});setTimeout(()=>ctx.close(),1100)}catch{}},[muted]);
  const draw=useCallback((timestamp)=>{
@@ -140,6 +229,7 @@ export default function MagicMirror(){
       try{
        const result=model.detectForVideo(video,timestamp),lm=result.landmarks?.[0];
        if(lm){
+        wingLandmarksRef.current=lm;
         const shoulder=lm[12],wrist=lm[16],leftShoulder=lm[11],leftWrist=lm[15];
         const isVisible=(p)=>p && (p.visibility??1)>.6;
         // The wings are activated when both arms extend horizontally, not simply raised.
@@ -192,7 +282,7 @@ export default function MagicMirror(){
           if(held>=700 && timestamp-lastTriggerRef.current>1600 && !activeRef.current){activeRef.current=true;effectTimeRef.current=timestamp;lastTriggerRef.current=timestamp;setSpellCount(v=>v+1);setStatus('สำเร็จ! เวทมนตร์ตื่นขึ้นแล้ว ✨');playChime();}
           else if(!activeRef.current)setStatus('ยกมือค้างไว้เพื่อปลุกพลังเวทมนตร์');
          }else if(!handMagicRef.current){handRef.current=null;holdStartRef.current=null;progressRef.current=0;setProgress(0);setStatus('ยกมือข้างใดข้างหนึ่งให้สูงกว่าไหล่');}
-       }else{if(!handMagicRef.current){handRef.current=null;holdStartRef.current=null;setProgress(0);}wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current.target=0;setWingProgress(0);}
+       }else{wingLandmarksRef.current=null;if(!handMagicRef.current){handRef.current=null;holdStartRef.current=null;setProgress(0);}wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current.target=0;setWingProgress(0);}
       }catch(e){console.warn('Pose detection frame skipped',e)}
     }
     // V08 hand inference at ~15 Hz; rendering stays at display refresh rate.
@@ -226,7 +316,12 @@ export default function MagicMirror(){
     }
     const wings=wingsRef.current;
     wings.opacity+=(wings.target-wings.opacity)*.10;
-    if(wings.opacity>.015 && wings.span>0)drawWings(ctx,wings.x,wings.y,wings.span,wings.angle,wings.opacity,timestamp);
+    if(wings.opacity>.015 && wings.span>0){
+      ctx.save();
+      clipWingsOutsideBody(ctx,wingLandmarksRef.current,w,dw,dh,ox,oy);
+      drawCrystalWings(ctx,wings.x,wings.y,wings.span,wings.angle,wings.opacity,timestamp);
+      ctx.restore();
+    }
     const hand=handRef.current;
     if(hand){
      const power=activeRef.current?1:.55,age=timestamp-effectTimeRef.current;
@@ -325,7 +420,7 @@ export default function MagicMirror(){
   <span className="eyebrow"><Sparkles size={16}/> AN INTERACTIVE FANTASY EXPERIENCE</span><h1>THE<br/><em>ENCHANTED</em><br/>MIRROR<span className="star-dot">✧</span></h1>
   <div className="gold-rule"/><p className="lead">ก้าวเข้าสู่โลกเวทมนตร์ที่มีชีวิต<br/>เพียงยกมือ… แล้วปล่อยให้แสงมหัศจรรย์ติดตามคุณ</p>
   <div className="instructions"><div><span>01</span><p>อนุญาตการใช้งานกล้อง</p></div><div><span>02</span><p>ยืนให้เห็นช่วงบนและยกมือเหนือไหล่</p></div><div><span>03</span><p>กางแขนค้าง 1 วินาทีเพื่อเรียกปีกเวทมนตร์</p></div></div>
-  <div className="notice"><WandSparkles size={17}/><span>Prototype 08 · True Hand Magic + Arcane Prism Wings<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
+  <div className="notice"><WandSparkles size={17}/><span>Prototype 08.1 · True Hand Magic + Crystal Butterfly Deluxe<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
  </section>
  <section className="mirror-wrap"><div className="mirror-ornament">✦ <span>THE MAGIC IS WITHIN YOU</span> ✦</div><div className="mirror-frame"><div className="mirror-inner">
   <video ref={videoRef} playsInline autoPlay muted className="hidden-video"/><canvas ref={canvasRef} width={720} height={1280} className="mirror-canvas" style={{display:phase==='play'?'block':'none'}}/>
@@ -340,5 +435,5 @@ export default function MagicMirror(){
   {phase==='play'&&<><button className="icon-action" onClick={()=>setMuted(v=>!v)} title={muted?'เปิดเสียง':'ปิดเสียง'}>{muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><button className="primary-action" onClick={capture}><Camera size={18}/> ถ่ายภาพเวทมนตร์</button><button className="icon-action" onClick={reset} title="เริ่มใหม่"><RefreshCcw size={18}/></button></>}
   {phase==='capture'&&<><button className="primary-action" onClick={sharePhoto}><Download size={18}/> แชร์ / บันทึกบนมือถือ</button><button className="secondary-action" onClick={savePhoto}>ดาวน์โหลด PNG</button><button className="secondary-action" onClick={openPhoto}>วิธีบันทึกรูป</button><button className="secondary-action" onClick={start}><RefreshCcw size={16}/> เล่นอีกครั้ง</button></>}
  </div>{error&&<p className="error-text"><CameraOff size={16}/>{error}<br/>ตรวจสอบสิทธิ์กล้อง อินเทอร์เน็ต แล้วลองใหม่</p>}</div></section>
- <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08</footer></main>
+ <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08.1</footer></main>
 }
