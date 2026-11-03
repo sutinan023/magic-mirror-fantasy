@@ -205,18 +205,29 @@ const MODEL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pos
 
 export default function MagicMirror(){
  const videoRef=useRef(null),canvasRef=useRef(null), landmarkerRef=useRef(null),streamRef=useRef(null),rafRef=useRef(0);
+ // Auto capture is driven by the video render clock, NOT by a timeout that may fire
+ // before the latest wings and hand particles have been painted on the Canvas.
+ const autoPhotoRef=useRef(null),captureFrameRef=useRef(null),wingLockUntilRef=useRef(0),lastPoseSeenRef=useRef(0);
+ const [countdown,setCountdown]=useState(null),[photoCue,setPhotoCue]=useState('');
  const wingLandmarksRef=useRef(null);
  const handMagicRef=useRef(null),handMagicLastRef=useRef(null),handMagicFrameRef=useRef(0),handBurstRef=useRef(0);
  const wingsRef=useRef({x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0}),wingHoldRef=useRef(null),lastWingTriggerRef=useRef(0),wingShownRef=useRef(false);
  const progressRef=useRef(0),sparksRef=useRef([]),lastSeenRef=useRef(-1),handRef=useRef(null),holdStartRef=useRef(null),lastFrameRef=useRef(0),lastTriggerRef=useRef(0),activeRef=useRef(false),effectTimeRef=useRef(0),phaseRef=useRef('welcome');
  const [phase,setPhase]=useState('welcome'),[status,setStatus]=useState('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม'),[progress,setProgress]=useState(0),[spellCount,setSpellCount]=useState(0),[wingCount,setWingCount]=useState(0),[wingProgress,setWingProgress]=useState(0),[snapshot,setSnapshot]=useState(null),[muted,setMuted]=useState(true),[error,setError]=useState(null),[handStatus,setHandStatus]=useState('เริ่มระบบเวทมือ'),[handMode,setHandMode]=useState(false),[chargePercent,setChargePercent]=useState(0);
  useEffect(()=>{phaseRef.current=phase},[phase]);
- const stop=useCallback(()=>{cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;handMagicRef.current?.close();handMagicRef.current=null;handMagicLastRef.current=null;handMagicFrameRef.current=0;handBurstRef.current=0;wingLandmarksRef.current=null;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
+ const stop=useCallback(()=>{autoPhotoRef.current=null;captureFrameRef.current=null;wingLockUntilRef.current=0;lastPoseSeenRef.current=0;setCountdown(null);setPhotoCue('');cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;handMagicRef.current?.close();handMagicRef.current=null;handMagicLastRef.current=null;handMagicFrameRef.current=0;handBurstRef.current=0;wingLandmarksRef.current=null;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
  useEffect(()=>()=>{stop()},[stop]);
  const playChime=useCallback(()=>{if(muted)return;try{const ctx=new AudioContext();const t=ctx.currentTime;[523.25,659.25,783.99].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t+i*.1);g.gain.exponentialRampToValueAtTime(.065,t+i*.1+.02);g.gain.exponentialRampToValueAtTime(.0001,t+i*.1+.5);o.connect(g).connect(ctx.destination);o.start(t+i*.1);o.stop(t+i*.1+.52)});setTimeout(()=>ctx.close(),1100)}catch{}},[muted]);
  const draw=useCallback((timestamp)=>{
   const canvas=canvasRef.current,video=videoRef.current,model=landmarkerRef.current;if(!canvas||!video||!model||phaseRef.current!=='play')return;
   const ctx=canvas.getContext('2d');if(!ctx)return;const w=canvas.width,h=canvas.height;
+  const beginAutoPhoto=(kind)=>{
+   if(autoPhotoRef.current || phaseRef.current!=='play')return;
+   autoPhotoRef.current={kind,startedAt:timestamp,shootAt:timestamp+3000};
+   setPhotoCue(kind==='wings'?'ปีกคริสตัลพร้อมแล้ว! โพสท่าเลย':kind==='burst'?'ปล่อยพลังสำเร็จ! เตรียมถ่าย':'ลูกแก้วพร้อมแล้ว! ยิ้มได้เลย');
+   setCountdown(3);
+   if(kind==='wings')wingLockUntilRef.current=timestamp+5000;
+  };
   ctx.clearRect(0,0,w,h);
   if(video.readyState>=2){
     // cover scaling, mirrored horizontally, matches landmark conversion below
@@ -229,6 +240,7 @@ export default function MagicMirror(){
       try{
        const result=model.detectForVideo(video,timestamp),lm=result.landmarks?.[0];
        if(lm){
+        lastPoseSeenRef.current=timestamp;
         wingLandmarksRef.current=lm;
         const shoulder=lm[12],wrist=lm[16],leftShoulder=lm[11],leftWrist=lm[15];
         const isVisible=(p)=>p && (p.visibility??1)>.6;
@@ -259,13 +271,13 @@ export default function MagicMirror(){
           setWingProgress(Math.min(100,Math.floor(held/1000*100)));
           if(held>=1000 && !wingShownRef.current && timestamp-lastWingTriggerRef.current>1800){
             wingShownRef.current=true;lastWingTriggerRef.current=timestamp;wings.burst=timestamp;
-            setWingCount(n=>n+1);setStatus('WINGS OF LIGHT — ปีกเวทมนตร์ปรากฏแล้ว!');playChime();
+            setWingCount(n=>n+1);setStatus('WINGS OF LIGHT — ปีกเวทมนตร์ปรากฏแล้ว!');playChime();beginAutoPhoto('wings');
             for(let k=0;k<90;k++){const a=Math.random()*Math.PI*2,vel=1+Math.random()*5;
               sparksRef.current.push({x:cx+(Math.random()-.5)*span*2,y:cy+(Math.random()-.5)*span,vx:Math.cos(a)*vel,vy:Math.sin(a)*vel,life:48+Math.random()*35,max:83,r:1+Math.random()*3,hue:k%3?44:273});}
           }
           wings.target=wingShownRef.current?1:.22;
         }else{
-          wingHoldRef.current=null;wingShownRef.current=false;setWingProgress(0);wings.target=0;
+          wingHoldRef.current=null;wingShownRef.current=false;setWingProgress(0);wings.target=timestamp<wingLockUntilRef.current?1:0;
         }
         const rightUp=isVisible(shoulder)&&isVisible(wrist)&&wrist.y<shoulder.y-.10;
         const leftUp=isVisible(leftShoulder)&&isVisible(leftWrist)&&leftWrist.y<leftShoulder.y-.10;
@@ -282,7 +294,7 @@ export default function MagicMirror(){
           if(held>=700 && timestamp-lastTriggerRef.current>1600 && !activeRef.current){activeRef.current=true;effectTimeRef.current=timestamp;lastTriggerRef.current=timestamp;setSpellCount(v=>v+1);setStatus('สำเร็จ! เวทมนตร์ตื่นขึ้นแล้ว ✨');playChime();}
           else if(!activeRef.current)setStatus('ยกมือค้างไว้เพื่อปลุกพลังเวทมนตร์');
          }else if(!handMagicRef.current){handRef.current=null;holdStartRef.current=null;progressRef.current=0;setProgress(0);setStatus('ยกมือข้างใดข้างหนึ่งให้สูงกว่าไหล่');}
-       }else{wingLandmarksRef.current=null;if(!handMagicRef.current){handRef.current=null;holdStartRef.current=null;setProgress(0);}wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current.target=0;setWingProgress(0);}
+       }else{wingLandmarksRef.current=null;if(!handMagicRef.current){handRef.current=null;holdStartRef.current=null;setProgress(0);}wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current.target=timestamp<wingLockUntilRef.current?1:0;setWingProgress(0);}
       }catch(e){console.warn('Pose detection frame skipped',e)}
     }
     // V08 hand inference at ~15 Hz; rendering stays at display refresh rate.
@@ -298,10 +310,11 @@ export default function MagicMirror(){
           if(info.canvasPalm){
             const previous=handRef.current;
             handRef.current=previous?{x:previous.x+(info.canvasPalm.x-previous.x)*.34,y:previous.y+(info.canvasPalm.y-previous.y)*.34}:info.canvasPalm;
-          }else{handRef.current=null;}
+          }else if(!autoPhotoRef.current){handRef.current=null;}
           for(const event of info.events){
-            if(event==='ORB_APPEAR'){setSpellCount(n=>n+1);playChime();}
+            if(event==='ORB_APPEAR'){setSpellCount(n=>n+1);playChime();beginAutoPhoto('orb');}
             if(event==='BURST'){
+              beginAutoPhoto('burst');
               handBurstRef.current=timestamp;effectTimeRef.current=timestamp;activeRef.current=true;
               playChime();
               const pos=handRef.current;
@@ -315,6 +328,7 @@ export default function MagicMirror(){
       }catch(e){console.warn('Hand detection frame skipped',e);}
     }
     const wings=wingsRef.current;
+    if(timestamp<wingLockUntilRef.current)wings.target=1;
     wings.opacity+=(wings.target-wings.opacity)*.10;
     if(wings.opacity>.015 && wings.span>0){
       ctx.save();
@@ -325,7 +339,7 @@ export default function MagicMirror(){
     const hand=handRef.current;
     if(hand){
      const power=activeRef.current?1:.55,age=timestamp-effectTimeRef.current;
-     if(activeRef.current && age>3000)activeRef.current=false;
+     if(activeRef.current && age>3000 && !autoPhotoRef.current)activeRef.current=false;
      if(activeRef.current || holdStartRef.current!==null || handMagicLastRef.current?.state==='CHARGING'){
       const count=activeRef.current?10:handMagicLastRef.current?.state==='CHARGING'?7:3;
       for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,vel=(.35+Math.random()*2.2)*(activeRef.current?1.6:1);sparksRef.current.push({x:hand.x+(Math.random()-.5)*16,y:hand.y+(Math.random()-.5)*16,vx:Math.cos(a)*vel,vy:Math.sin(a)*vel-.5,life:35+Math.random()*35,max:70,r:1.2+Math.random()*3,hue:Math.random()>.25?44:273})}
@@ -344,10 +358,29 @@ export default function MagicMirror(){
     ctx.save();ctx.globalCompositeOperation='screen';sparksRef.current=sparksRef.current.filter(s=>s.life>0).slice(-500);for(const s of sparksRef.current){s.x+=s.vx;s.y+=s.vy;s.vy-=.018;s.life-=1;const alpha=Math.max(0,s.life/s.max);ctx.fillStyle=s.hue===44?`rgba(255,215,126,${alpha})`:`rgba(201,154,255,${alpha})`;ctx.beginPath();ctx.arc(s.x,s.y,s.r*alpha,0,Math.PI*2);ctx.fill();}ctx.restore();
     // gentle frame decoration
     ctx.strokeStyle='rgba(220,183,111,.38)';ctx.lineWidth=3;ctx.strokeRect(14,14,w-28,h-28);
+    // After the full composited frame is drawn, save THAT frame directly.
+    // No on-screen countdown UI is rendered onto this canvas.
+    const pending=autoPhotoRef.current;
+    if(pending){
+      if(timestamp-lastPoseSeenRef.current>950){
+        autoPhotoRef.current=null;wingLockUntilRef.current=0;
+        setCountdown(null);setPhotoCue('');setStatus('ผู้เล่นหลุดจากกล้อง กรุณาร่ายเวทใหม่');
+      }else{
+        const seconds=Math.max(1,Math.ceil((pending.shootAt-timestamp)/1000));
+        if(seconds!==pending.lastSecond){pending.lastSecond=seconds;setCountdown(seconds);}
+        if(timestamp>=pending.shootAt){
+          autoPhotoRef.current=null;
+          setCountdown(null);setPhotoCue('');
+          // Capture must run from this animation frame after drawing the latest effects.
+          captureFrameRef.current?.();
+          return;
+        }
+      }
+    }
    }
   rafRef.current=requestAnimationFrame(draw);
  },[playChime]);
- const start=async()=>{let stage='เริ่มต้น';stop();setError(null);setStatus('กำลังเปิดประตูเวทมนตร์...');setPhase('loading');setProgress(0);setSpellCount(0);setWingCount(0);setWingProgress(0);setSnapshot(null);setHandMode(false);setHandStatus('กำลังเปิดระบบติดตามมือ...');setChargePercent(0);try{
+ const start=async()=>{let stage='เริ่มต้น';stop();setError(null);setStatus('กำลังเปิดประตูเวทมนตร์...');setPhase('loading');setProgress(0);setSpellCount(0);setWingCount(0);setWingProgress(0);setSnapshot(null);setCountdown(null);setPhotoCue('');setHandMode(false);setHandStatus('กำลังเปิดระบบติดตามมือ...');setChargePercent(0);try{
    if(!navigator.mediaDevices?.getUserMedia)throw new Error('เบราว์เซอร์นี้ไม่รองรับกล้อง หรือไม่ได้ใช้ HTTPS/localhost');
    stage='ขอสิทธิ์กล้อง';setStatus('กำลังขอสิทธิ์กล้อง...');
    const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'}});streamRef.current=stream;
@@ -379,7 +412,13 @@ export default function MagicMirror(){
   return new File([bytes],filename,{type:mime});
  };
  const photoFileRef=useRef(null);
- const capture=()=>{const c=canvasRef.current;if(!c)return;try{const data=c.toDataURL('image/png');photoFileRef.current=makePhotoFile(data);setSnapshot(data);setPhase('capture');cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;}catch{setError('ไม่สามารถบันทึกภาพได้')}};
+ const capture=()=>{const c=canvasRef.current;if(!c)return;try{
+   autoPhotoRef.current=null;wingLockUntilRef.current=0;setCountdown(null);setPhotoCue('');
+   const data=c.toDataURL('image/png');photoFileRef.current=makePhotoFile(data);
+   phaseRef.current='capture';setSnapshot(data);setPhase('capture');cancelAnimationFrame(rafRef.current);
+   streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;
+  }catch{setError('ไม่สามารถบันทึกภาพได้')}};
+ captureFrameRef.current=capture;
  // Use a Blob download instead of relying on the `download` attribute for a data URL.
  // Some mobile browsers require the user to save the opened image manually.
  const savePhoto=()=>{
@@ -415,12 +454,12 @@ export default function MagicMirror(){
   // Keep fallback image visible inside page; window.open(data:) is blocked by some mobile browsers.
   setError('แตะรูปภาพค้างแล้วเลือก “บันทึกรูปภาพ” หรือ “ดาวน์โหลดรูปภาพ” ตามเมนูของอุปกรณ์');
  };
- const reset=()=>{stop();setPhase('welcome');setSnapshot(null);photoFileRef.current=null;setStatus('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม');setError(null)};
+ const reset=()=>{stop();setPhase('welcome');setSnapshot(null);photoFileRef.current=null;setCountdown(null);setPhotoCue('');setStatus('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม');setError(null)};
  return <main className="app-shell"><div className="site-stars" aria-hidden="true"/><section className="info-panel">
   <span className="eyebrow"><Sparkles size={16}/> AN INTERACTIVE FANTASY EXPERIENCE</span><h1>THE<br/><em>ENCHANTED</em><br/>MIRROR<span className="star-dot">✧</span></h1>
   <div className="gold-rule"/><p className="lead">ก้าวเข้าสู่โลกเวทมนตร์ที่มีชีวิต<br/>เพียงยกมือ… แล้วปล่อยให้แสงมหัศจรรย์ติดตามคุณ</p>
   <div className="instructions"><div><span>01</span><p>อนุญาตการใช้งานกล้อง</p></div><div><span>02</span><p>ยืนให้เห็นช่วงบนและยกมือเหนือไหล่</p></div><div><span>03</span><p>กางแขนค้าง 1 วินาทีเพื่อเรียกปีกเวทมนตร์</p></div></div>
-  <div className="notice"><WandSparkles size={17}/><span>Prototype 08.1 · True Hand Magic + Crystal Butterfly Deluxe<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
+  <div className="notice"><WandSparkles size={17}/><span>Prototype 08.2 · Smart Auto Capture + Crystal Butterfly Deluxe<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
  </section>
  <section className="mirror-wrap"><div className="mirror-ornament">✦ <span>THE MAGIC IS WITHIN YOU</span> ✦</div><div className="mirror-frame"><div className="mirror-inner">
   <video ref={videoRef} playsInline autoPlay muted className="hidden-video"/><canvas ref={canvasRef} width={720} height={1280} className="mirror-canvas" style={{display:phase==='play'?'block':'none'}}/>
@@ -428,12 +467,13 @@ export default function MagicMirror(){
   {phase==='loading'&&<div className="loading-scene"><div className="loader-sun">✺</div><h2>OPENING THE PORTAL</h2><p>กำลังเตรียมกล้องและโมเดล AI...</p></div>}
   {phase==='capture'&&snapshot&&<img src={snapshot} alt="ภาพเวทมนตร์ที่ถ่ายจากกระจก" className="capture-image"/>}
   {phase==='play'&&<div className="play-overlay"><div className="spell-heading"><span className="mini-label">SPELLS 01 + 02 + 03</span><h2>TRUE HAND MAGIC</h2></div><div className="spell-instruction"><div className="spell-status">{status}</div><div className="progress-track"><div style={{width:`${progress}%`}}/></div><small>✨ ลูกแก้ว {spellCount} ครั้ง · 🦋 ปีก {wingCount} ครั้ง</small>{handMode&&<div style={{fontSize:12,marginTop:6,color:'#f3d6a4'}}>✋ {handStatus} · พลัง {chargePercent}%</div>}<div className="wing-progress"><span>WINGS OF LIGHT</span><div className="progress-track"><div style={{width:`${wingProgress}%`}}/></div></div></div></div>}
+  {phase==='play'&&countdown!==null&&<div role="status" aria-live="polite" style={{position:'absolute',left:'50%',top:'46%',transform:'translate(-50%,-50%)',pointerEvents:'none',zIndex:9,textAlign:'center',width:'85%',textShadow:'0 3px 20px #13082e'}}><div style={{color:'#ffe5a7',letterSpacing:'.09em',fontSize:'clamp(11px,1.2vw,16px)',fontWeight:700}}>{photoCue}</div><div style={{fontSize:'clamp(100px,15vw,180px)',fontFamily:'Georgia,serif',color:'#fff4cc',fontWeight:700,lineHeight:1.1,filter:'drop-shadow(0 0 24px #d19cff)'}}>{countdown}</div><div style={{color:'#f5dcfa',fontSize:'clamp(12px,1.3vw,18px)'}}>ระบบจะถ่ายให้อัตโนมัติ ✦</div></div>}
   {phase==='capture'&&<div className="capture-label"><Sparkles size={16}/> YOUR MAGICAL MOMENT</div>}
  </div></div><div className="mirror-footer"><span>✦ ENCHANTED REALM ✦</span><div className="mirror-actions">
   {phase==='welcome'&&<button className="primary-action" onClick={start}><Camera size={18}/> เข้าสู่โลกเวทมนตร์</button>}
   {phase==='loading'&&<button className="primary-action" disabled>กำลังเตรียมระบบ...</button>}
-  {phase==='play'&&<><button className="icon-action" onClick={()=>setMuted(v=>!v)} title={muted?'เปิดเสียง':'ปิดเสียง'}>{muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><button className="primary-action" onClick={capture}><Camera size={18}/> ถ่ายภาพเวทมนตร์</button><button className="icon-action" onClick={reset} title="เริ่มใหม่"><RefreshCcw size={18}/></button></>}
+  {phase==='play'&&<><button className="icon-action" onClick={()=>setMuted(v=>!v)} title={muted?'เปิดเสียง':'ปิดเสียง'}>{muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><button className="primary-action" onClick={capture}><Camera size={18}/> ถ่ายเอง</button><button className="icon-action" onClick={reset} title="เริ่มใหม่"><RefreshCcw size={18}/></button></>}
   {phase==='capture'&&<><button className="primary-action" onClick={sharePhoto}><Download size={18}/> แชร์ / บันทึกบนมือถือ</button><button className="secondary-action" onClick={savePhoto}>ดาวน์โหลด PNG</button><button className="secondary-action" onClick={openPhoto}>วิธีบันทึกรูป</button><button className="secondary-action" onClick={start}><RefreshCcw size={16}/> เล่นอีกครั้ง</button></>}
  </div>{error&&<p className="error-text"><CameraOff size={16}/>{error}<br/>ตรวจสอบสิทธิ์กล้อง อินเทอร์เน็ต แล้วลองใหม่</p>}</div></section>
- <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08.1</footer></main>
+ <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08.2</footer></main>
 }
