@@ -1,47 +1,40 @@
-# Magic Mirror V08.5 — Back-Rooted Crystal Wings
+# V08.6 — Body-Fit Crystal Wings
 
-Base: V08.4 Premium Wings + Body Segmentation.
+**Base:** V08.5, preserving V08.4 MediaPipe segmentation and the working V08.2 Auto Capture / V08 True Hand Magic.
 
-## Updated files
-- `lib/premiumWings.js` — main change: move roots toward the spine, lower toward shoulder blades; outward tilt; preserve alpha and portrait bounds.
-- `components/MagicMirror.jsx` — version label only.
-- `lib/bodySegmentation.js` — unchanged from V08.4.
-- `lib/trueHandMagic.js` — unchanged from V08.4.
+## Changes
 
-## Installation (existing project only)
-Copy `lib/premiumWings.js` to `C:\\xampp\\htdocs\\magic-mirror-fantasy-js\\lib\\premiumWings.js`.
-Optionally copy `components/MagicMirror.jsx` to update displayed version number.
-**No CSS, routing, package.json, Hand Magic, Auto Capture, or photo-save changes.**
+- **Scale tied to the person:** shoulder width + shoulder-to-hip estimate, with bounded fallback when hips are hidden.
+- **No fit-to-frame shrink:** upper/lower wing tips can be cropped by the camera image; wings no longer shrink to the empty space between the shoulders and the portrait edge.
+- **Back-rooted placement:** symmetrical projected scapular roots, at ±28.5% shoulder span horizontally and 24.5% shoulder span below shoulder line. Both stay hidden behind the segmented person when possible.
+- **Occlusion fallback:** while the first segmentation mask isn't ready, use the approximate torso clip to avoid exposing roots.
+- **No changes** to UI styling, tracking gestures, camera, Auto Capture timing, saving/sharing on mobile or port 3107.
 
-The 4 existing transparent PNG images must remain:
-- `public/assets/wings/wing-left-base.png`
-- `public/assets/wings/wing-right-base.png`
-- `public/assets/wings/wing-left-glow.png`
-- `public/assets/wings/wing-right-glow.png`
+## Files to replace in your existing project
 
-## Main difference
-Previously roots sat at x = ±45% of shoulder width (the shoulder edge), slightly above the shoulder line.
-Now roots are x = ±23.5% of shoulder width (upper back region projected into camera), y = +14.5% of shoulder width (below the shoulder line).
-The person segmentation is drawn **over the wing images** to conceal their internal roots; the visible wing portions emerge from behind the torso.
+1. `lib/premiumWings.js` — person-sized wing renderer.
+2. `components/MagicMirror.jsx` — passes smoothed torso metric to the renderer, version label, and mask-ready fallback.
+3. `lib/bodySegmentation.js` — exposes a tiny `hasMask()` readiness check; segmentation core unchanged.
 
-This is a 2D visual illusion. A front-facing camera cannot directly measure the real scapula behind the body, so the position is an estimate.
+Keep `lib/trueHandMagic.js`, CSS, package.json, original PNGs at `public/assets/wings/` and everything else as-is.
 
-## Adjustable parameters
-In `WING_CONFIG`:
-- `backRootSpread` (default 0.235): 0.20 moves roots closer to spine; 0.29 moves them apart
-- `backRootDrop` (default 0.145): 0.10 moves roots higher; 0.20 lower
-- `outwardTilt` (default 0.075): changes outward angle subtly
-- `scale`, `heightScale`: size before portrait containment
-- `glowOpacity`: glow strength
+## Run and verify
 
-## Testing
-1. `npm run build` then `npm run dev`, app on port **3107** (unchanged)
-2. Face the camera, activate wings, lower arms and turn shoulders slightly
-3. Confirm wing roots disappear behind torso instead of sitting on shoulder outline
-4. Confirm both wings remain present in 3-second auto-captured photo
-5. Test on iPad/iPhone HTTPS. If segmentation fails, legacy torso approximate mask remains a fallback.
+```bash
+npm run build
+npm run dev
+```
 
-### Limitations
-- Image asset roots must match source PNG padding. The PNGs were not provided; these normalized positions use the working V08.4 calibration.
-- True 3D depth / shoulder rotation would require additional estimation.
-- Syntax and renderer geometry checks performed; browser/camera tests still required.
+The existing Next.js dev script should keep port **3107**. Test standing near and far, arm extended and down, body slightly angled, and check the 3-second automatic capture saved PNG. Confirm roots are covered by the person and wing scale follows body rather than frame margins. Use the V08.5 Git commit to roll back if needed.
+
+## Tunable parameters
+
+In `lib/premiumWings.js`, change `WING_CONFIG`:
+- `widthInShoulders` (2.35) and `heightInShoulders` (2.50) to adjust wing size.
+- `backRootSpread` (.285) to move roots farther/closer to spine.
+- `backRootDrop` (.245) to move roots lower/higher on upper back.
+- `outwardTilt` (.085) to adjust the open angle.
+
+**Important:** A canvas clips at its own rectangle. V08.6 allows wings to exceed the *ideal mirror composition* without shrinking, but their outer portions are still cropped by the actual 720×1280 camera canvas. Drawing them visibly outside the HTML golden mirror frame, or preserving outside-frame portions in a downloadable screenshot, needs a separate overlaid composition canvas and is not part of this patch.
+
+**Status:** Source-level JS/JSX syntax and package integrity verified. Browser camera, iPad, MediaPipe model and actual PNG registration still require testing.

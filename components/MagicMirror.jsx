@@ -125,7 +125,7 @@ export default function MagicMirror(){
  const [phase,setPhase]=useState('welcome'),[status,setStatus]=useState('กล้องพร้อมจะเริ่มเมื่อคุณกดปุ่ม'),[progress,setProgress]=useState(0),[spellCount,setSpellCount]=useState(0),[wingCount,setWingCount]=useState(0),[wingProgress,setWingProgress]=useState(0),[snapshot,setSnapshot]=useState(null),[muted,setMuted]=useState(true),[error,setError]=useState(null),[handStatus,setHandStatus]=useState('เริ่มระบบเวทมือ'),[handMode,setHandMode]=useState(false),[chargePercent,setChargePercent]=useState(0);
  useEffect(()=>{phaseRef.current=phase},[phase]);
  const stop=useCallback(()=>{autoPhotoRef.current=null;captureFrameRef.current=null;wingLockUntilRef.current=0;lastPoseSeenRef.current=0;setCountdown(null);setPhotoCue('');cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;landmarkerRef.current?.close();landmarkerRef.current=null;
-  bodySegRef.current?.close();bodySegRef.current=null;lastSegFrameRef.current=0;handMagicRef.current?.close();handMagicRef.current=null;handMagicLastRef.current=null;handMagicFrameRef.current=0;handBurstRef.current=0;wingLandmarksRef.current=null;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,angle:0,opacity:0,target:0,burst:0};},[]);
+  bodySegRef.current?.close();bodySegRef.current=null;lastSegFrameRef.current=0;handMagicRef.current?.close();handMagicRef.current=null;handMagicLastRef.current=null;handMagicFrameRef.current=0;handBurstRef.current=0;wingLandmarksRef.current=null;holdStartRef.current=null;handRef.current=null;progressRef.current=0;activeRef.current=false;sparksRef.current=[];wingHoldRef.current=null;wingShownRef.current=false;wingsRef.current={x:0,y:0,span:0,torso:0,angle:0,opacity:0,target:0,burst:0};},[]);
  useEffect(()=>()=>{stop()},[stop]);
  const playChime=useCallback(()=>{if(muted)return;try{const ctx=new AudioContext();const t=ctx.currentTime;[523.25,659.25,783.99].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t+i*.1);g.gain.exponentialRampToValueAtTime(.065,t+i*.1+.02);g.gain.exponentialRampToValueAtTime(.0001,t+i*.1+.5);o.connect(g).connect(ctx.destination);o.start(t+i*.1);o.stop(t+i*.1+.52)});setTimeout(()=>ctx.close(),1100)}catch{}},[muted]);
  const draw=useCallback((timestamp)=>{
@@ -174,7 +174,22 @@ export default function MagicMirror(){
         const tilt=Math.atan2((shoulder.y-leftShoulder.y)*dh,-(shoulder.x-leftShoulder.x)*dw);
         const smooth=wings.span?0.15:1;
         wings.x+=(cx-wings.x)*smooth;wings.y+=(cy-wings.y)*smooth;
-        wings.span+=(span-wings.span)*smooth;wings.angle+=(tilt-wings.angle)*smooth;
+        // Estimate body dimensions with the same crop and mirrored coordinate
+        // system as the camera. If hips are not reliable, preserve recent
+        // torso length or use a shoulder-based fallback.
+        const leftHip=lm[23],rightHip=lm[24];
+        const hipsVisible=[leftHip,rightHip].every(p=>p && Number.isFinite(p.x) && Number.isFinite(p.y) && (p.visibility??1)>.48);
+        let torso=span*1.45;
+        if(hipsVisible){
+          const hipX=w-(ox+((leftHip.x+rightHip.x)/2)*dw);
+          const hipY=oy+((leftHip.y+rightHip.y)/2)*dh;
+          const measured=Math.hypot(hipX-cx,hipY-cy);
+          if(measured>span*.65 && measured<span*2.6)torso=measured;
+          else if(wings.torso)torso=wings.torso;
+        }else if(wings.torso)torso=wings.torso;
+        wings.span+=(span-wings.span)*smooth;
+        wings.torso+=(torso-wings.torso)*smooth;
+        wings.angle+=(tilt-wings.angle)*smooth;
         if(extended){
           if(wingHoldRef.current===null)wingHoldRef.current=timestamp;
           const held=timestamp-wingHoldRef.current;
@@ -252,13 +267,15 @@ export default function MagicMirror(){
          ctx.save();clipWingsOutsideBody(ctx,wingLandmarksRef.current,w,dw,dh,ox,oy);
          drawPremiumWings(ctx,premiumWingsRef.current,wings,timestamp);ctx.restore();
        }else{
-         // Camera was drawn above. Draw wings, then composite ONLY the original person
-         // back on top to create true wing-behind-body occlusion.
-         drawPremiumWings(ctx,premiumWingsRef.current,wings,timestamp);
-         const composited=bodySegRef.current.drawForeground(ctx,video,{width:w,height:h,dw,dh,ox,oy});
-         if(!composited){
-           // Before the first mask returns, use the torso approximation as a one-frame bridge.
-           // Don't cover the video a second time: mask is not ready yet.
+         // Until the FIRST mask is ready, don't draw an exposed wing root.
+         // Once ready, overlay only the person so the inner roots stay BEHIND
+         // hair, shoulders and torso even when the hands move.
+         if(bodySegRef.current.hasMask()){
+           drawPremiumWings(ctx,premiumWingsRef.current,wings,timestamp);
+           bodySegRef.current.drawForeground(ctx,video,{width:w,height:h,dw,dh,ox,oy});
+         }else{
+           ctx.save();clipWingsOutsideBody(ctx,wingLandmarksRef.current,w,dw,dh,ox,oy);
+           drawPremiumWings(ctx,premiumWingsRef.current,wings,timestamp);ctx.restore();
          }
        }
      }
@@ -397,7 +414,7 @@ export default function MagicMirror(){
   <span className="eyebrow"><Sparkles size={16}/> AN INTERACTIVE FANTASY EXPERIENCE</span><h1>THE<br/><em>ENCHANTED</em><br/>MIRROR<span className="star-dot">✧</span></h1>
   <div className="gold-rule"/><p className="lead">ก้าวเข้าสู่โลกเวทมนตร์ที่มีชีวิต<br/>เพียงยกมือ… แล้วปล่อยให้แสงมหัศจรรย์ติดตามคุณ</p>
   <div className="instructions"><div><span>01</span><p>อนุญาตการใช้งานกล้อง</p></div><div><span>02</span><p>ยืนให้เห็นช่วงบนและยกมือเหนือไหล่</p></div><div><span>03</span><p>กางแขนค้าง 1 วินาทีเพื่อเรียกปีกเวทมนตร์</p></div></div>
-  <div className="notice"><WandSparkles size={17}/><span>Prototype 08.5 · Premium Wing Asset + Body Segmentation<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
+  <div className="notice"><WandSparkles size={17}/><span>Prototype 08.6 · Premium Wing Asset + Body Segmentation<br/><small>วิดีโอประมวลผลในเบราว์เซอร์ ไม่อัปโหลดขึ้นเซิร์ฟเวอร์</small></span></div>
  </section>
  <section className="mirror-wrap"><div className="mirror-ornament">✦ <span>THE MAGIC IS WITHIN YOU</span> ✦</div><div className="mirror-frame"><div className="mirror-inner">
   <video ref={videoRef} playsInline autoPlay muted className="hidden-video"/><canvas ref={canvasRef} width={720} height={1280} className="mirror-canvas" style={{display:phase==='play'?'block':'none'}}/>
@@ -413,5 +430,5 @@ export default function MagicMirror(){
   {phase==='play'&&<><button className="icon-action" onClick={()=>setMuted(v=>!v)} title={muted?'เปิดเสียง':'ปิดเสียง'}>{muted?<VolumeX size={18}/>:<Volume2 size={18}/>}</button><button className="primary-action" onClick={capture}><Camera size={18}/> ถ่ายเอง</button><button className="icon-action" onClick={reset} title="เริ่มใหม่"><RefreshCcw size={18}/></button></>}
   {phase==='capture'&&<><button className="primary-action" onClick={sharePhoto}><Download size={18}/> แชร์ / บันทึกบนมือถือ</button><button className="secondary-action" onClick={savePhoto}>ดาวน์โหลด PNG</button><button className="secondary-action" onClick={openPhoto}>วิธีบันทึกรูป</button><button className="secondary-action" onClick={start}><RefreshCcw size={16}/> เล่นอีกครั้ง</button></>}
  </div>{error&&<p className="error-text"><CameraOff size={16}/>{error}<br/>ตรวจสอบสิทธิ์กล้อง อินเทอร์เน็ต แล้วลองใหม่</p>}</div></section>
- <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08.5</footer></main>
+ <footer className="global-footer">MAGIC MIRROR LAB <span>✦</span> INTERACTIVE VISION PROTOTYPE 08.6</footer></main>
 }
